@@ -1,0 +1,30 @@
+# Python virtual environment
+.venv/
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Testing, linting, and type-checking caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build outputs
+build/
+dist/
+
+# Local datasets and generated artifacts
+data/raw/
+artifacts/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
