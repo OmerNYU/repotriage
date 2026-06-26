@@ -621,17 +621,86 @@ def test_internally_owned_client_is_closed_on_fetch_failure(
 
     monkeypatch.setattr(GitHubClient, "close", spy_close)
 
+    calls = {"count": 0}
+
     def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
         return json_response([], status_code=404)
+
+    transport = httpx.MockTransport(handler)
 
     with pytest.raises(GitHubAPIError):
         fetch_repository_issues(
             repository,
             max_pages=1,
             output_root=output_root,
+            transport=transport,
         )
 
+    assert calls["count"] >= 1
     assert closed is True
+
+
+def test_internally_owned_client_uses_injected_transport_on_success(
+    repository: RepositoryRef,
+    output_root: Path,
+) -> None:
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        return json_response(
+            [make_issue(1)],
+            headers={
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4999",
+                "x-ratelimit-reset": "1700000000",
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    result = fetch_repository_issues(
+        repository,
+        max_pages=1,
+        output_root=output_root,
+        transport=transport,
+    )
+
+    assert result.cache_hit is False
+    assert result.manifest.issues_received == 1
+    assert len(requested_urls) == 1
+    assert requested_urls[0].startswith("https://api.github.com/")
+
+
+def test_caller_supplied_client_is_not_closed(
+    repository: RepositoryRef,
+    output_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    close_calls = {"count": 0}
+    original_close = GitHubClient.close
+
+    def spy_close(self: GitHubClient) -> None:
+        close_calls["count"] += 1
+        original_close(self)
+
+    monkeypatch.setattr(GitHubClient, "close", spy_close)
+
+    transport = build_mock_transport([[make_issue(1)]])
+    client = GitHubClient(transport=transport)
+
+    fetch_repository_issues(
+        repository,
+        max_pages=1,
+        output_root=output_root,
+        client=client,
+    )
+
+    # fetch_repository_issues must not close a caller-owned client.
+    assert close_calls["count"] == 0
+    client.close()
+    assert close_calls["count"] == 1
 
 
 def test_keyboard_interrupt_during_fetch_cleans_staging_without_live_cache(

@@ -23,6 +23,7 @@ dist/
 
 # Local datasets and generated artifacts
 data/raw/
+data/processed/
 artifacts/
 
 # Operating-system files
