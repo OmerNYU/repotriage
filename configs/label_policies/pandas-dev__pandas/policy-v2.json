@@ -1,0 +1,252 @@
+{
+  "config_schema_version": "2",
+  "repository": "pandas-dev/pandas",
+  "notes": "Manually reviewed v2 target-label decisions for pandas-dev/pandas. Decisions are explicit and human-authored; semantic roles and reasons are never inferred from label names. Inclusion requires semantic predictability from the initial issue title/body and satisfaction of all objective selection criteria: at least 30 issues of total support, activity in at least 12 distinct dataset months, and at least 5 issues in the recent active-month window (the final four active months). Workflow and post-investigation outcome labels are excluded because they are not derivable from the initial issue text.",
+  "selection_criteria": {
+    "min_total_support": 30,
+    "min_active_months": 12,
+    "min_recent_support": 5,
+    "recent_window_months": 4
+  },
+  "default": {
+    "decision": "exclude",
+    "role": "unreviewed",
+    "reason_code": "unreviewed_default",
+    "leakage_risk": "high",
+    "explanation": "Not explicitly reviewed for v2; excluded by the safe default because it lacks a demonstrated, human-reviewed case as a first-model target."
+  },
+  "labels": [
+    {
+      "label": "Bug",
+      "decision": "include",
+      "role": "issue_type",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Primary issue-type target; predictable from initial title/body and well supported across the dataset."
+    },
+    {
+      "label": "Enhancement",
+      "decision": "include",
+      "role": "issue_type",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Feature-request issue type; predictable from initial text and well supported."
+    },
+    {
+      "label": "Docs",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Documentation area; recognizable from initial text and well supported."
+    },
+    {
+      "label": "Arrow",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "PyArrow-backed component; predictable from initial text and meets support and temporal criteria."
+    },
+    {
+      "label": "Strings",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "String dtype/operations component; predictable from initial text and well supported."
+    },
+    {
+      "label": "Indexing",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Indexing/selection component; predictable from initial text and well supported."
+    },
+    {
+      "label": "Missing-data",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Missing-value handling component; predictable from initial text and well supported."
+    },
+    {
+      "label": "IO CSV",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "CSV read/write component; predictable from initial text and meets support and temporal criteria."
+    },
+    {
+      "label": "Numeric Operations",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Numeric/arithmetic operations component; predictable from initial text and well supported."
+    },
+    {
+      "label": "Performance",
+      "decision": "include",
+      "role": "quality",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Performance-quality dimension often stated explicitly in the initial report; meets support and temporal criteria."
+    },
+    {
+      "label": "Reshaping",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Reshaping/pivot/merge component; predictable from initial text and well supported."
+    },
+    {
+      "label": "Dtype Conversions",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Dtype conversion component; predictable from initial text and meets support and temporal criteria."
+    },
+    {
+      "label": "Build",
+      "decision": "include",
+      "role": "infrastructure",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Build/packaging infrastructure; recognizable from initial text and well supported."
+    },
+    {
+      "label": "Datetime",
+      "decision": "include",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "selected_target",
+      "explanation": "Datetime/timestamp component; predictable from initial text and well supported."
+    },
+    {
+      "label": "Regression",
+      "decision": "include",
+      "role": "issue_type",
+      "leakage_risk": "medium",
+      "reason_code": "selected_target",
+      "explanation": "Regression issue type; frequently signalled in the initial report, though sometimes confirmed during investigation, hence medium leakage risk."
+    },
+    {
+      "label": "Error Reporting",
+      "decision": "defer",
+      "role": "quality",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_recent_support",
+      "explanation": "Semantically legitimate quality target but only 2 issues in the recent active-month window; deferred pending more recent support."
+    },
+    {
+      "label": "Groupby",
+      "decision": "defer",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_recent_support",
+      "explanation": "Legitimate component but only 4 issues in the recent active-month window; deferred pending more recent support."
+    },
+    {
+      "label": "Apply",
+      "decision": "defer",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Legitimate component but total support is below the 30-issue threshold; deferred."
+    },
+    {
+      "label": "API Design",
+      "decision": "defer",
+      "role": "design",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Legitimate design concern but total support is below the 30-issue threshold; deferred."
+    },
+    {
+      "label": "Deprecate",
+      "decision": "defer",
+      "role": "lifecycle",
+      "leakage_risk": "medium",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Lifecycle label below the 30-issue support threshold; deferred."
+    },
+    {
+      "label": "Index",
+      "decision": "defer",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Legitimate component but total support is below the 30-issue threshold; deferred."
+    },
+    {
+      "label": "Copy / view semantics",
+      "decision": "defer",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Legitimate component but total support is below the 30-issue threshold; deferred."
+    },
+    {
+      "label": "IO JSON",
+      "decision": "defer",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Legitimate component but total support is below the 30-issue threshold; deferred."
+    },
+    {
+      "label": "Window",
+      "decision": "defer",
+      "role": "component",
+      "leakage_risk": "low",
+      "reason_code": "insufficient_total_support",
+      "explanation": "Legitimate component but total support is below the 30-issue threshold; deferred."
+    },
+    {
+      "label": "Needs Triage",
+      "decision": "exclude",
+      "role": "workflow",
+      "leakage_risk": "high",
+      "reason_code": "workflow_label",
+      "explanation": "Maintainer workflow state, not derivable from the initial issue text; excluded."
+    },
+    {
+      "label": "Needs Discussion",
+      "decision": "exclude",
+      "role": "workflow",
+      "leakage_risk": "high",
+      "reason_code": "workflow_label",
+      "explanation": "Maintainer workflow state reflecting process rather than initial-text content; excluded."
+    },
+    {
+      "label": "Closing Candidate",
+      "decision": "exclude",
+      "role": "resolution",
+      "leakage_risk": "high",
+      "reason_code": "post_investigation_outcome",
+      "explanation": "Outcome reached during triage rather than a property of the initial report; excluded."
+    },
+    {
+      "label": "Needs Info",
+      "decision": "exclude",
+      "role": "workflow",
+      "leakage_risk": "high",
+      "reason_code": "workflow_label",
+      "explanation": "Maintainer workflow state requesting more information; not an initial-text target; excluded."
+    },
+    {
+      "label": "Duplicate Report",
+      "decision": "exclude",
+      "role": "resolution",
+      "leakage_risk": "high",
+      "reason_code": "post_investigation_outcome",
+      "explanation": "Duplicate determination is a post-investigation outcome, not derivable from the initial text; excluded."
+    }
+  ]
+}

@@ -308,6 +308,112 @@ An audit describes only the bytes of the normalized dataset it was given; it can
 sampling bias in how the raw issues were originally fetched, and it does not interpret
 label semantics. Audit artifacts are local and git-ignored; do not commit `data/audits/`.
 
+## Building a target-label policy
+
+```bash
+repotriage build-label-policy \
+  --repo pandas-dev/pandas \
+  --dataset-id 20260628T161306010651Z-n1-074402d21505 \
+  --audit-id 20260628T161306010651Z-n1-074402d21505-a2 \
+  --config configs/label_policies/pandas-dev__pandas/policy-v2.json
+```
+
+A target-label policy decides which repository labels are first-model classification
+targets. It combines three immutable or tracked inputs: the normalized dataset, its audit
+artifact, and a version-controlled, human-authored decision configuration. The current
+contract is policy version 2 (`lp2`), with document, manifest, and configuration schemas
+all at version 2.
+
+### Why not every label is a model target
+
+A repository's label set mixes several distinct kinds of labels. Many are maintainer
+workflow states (for example `Needs Triage`, `Needs Info`) or post-investigation outcomes
+(for example `Closing Candidate`, `Duplicate Report`) that are decided during triage and
+are not derivable from the initial issue title and body. Training a model to predict such
+labels from the initial text leaks the answer or learns the maintainer's process rather
+than the issue's content. Other labels are semantically legitimate but too rare or too
+inactive recently to support a reliable first model. The policy makes these distinctions
+explicit instead of treating every label as a target.
+
+### Objective audit versus human policy
+
+The audit is purely objective: it counts supports, fractions, and monthly coverage with no
+judgement. The policy layer is where human, semantic decisions live. The policy never
+re-derives roles or reasons from label names; every reviewed label carries an explicit
+decision (`include`, `defer`, or `exclude`), a controlled `role`, a controlled
+`leakage_risk`, a controlled `reason_code`, and a free-form explanation. Every audited
+label that is not explicitly reviewed receives one safe default decision
+(`exclude` / `unreviewed` / `unreviewed_default`), so the generated policy always contains
+exactly one decision per audited label. Each decision also records its
+`decision_source` (`explicit` or `default`), and the policy reports explicit-versus-default
+label counts; the Markdown groups are derived from `decision` and `decision_source`, never
+from explanation strings.
+
+### Reason-code vocabulary and consistency
+
+Reason codes are a single controlled vocabulary, validated against the decision and source:
+`include` requires `selected_target`; default-applied exclusions require
+`unreviewed_default`; explicit exclusions require `workflow_label` or
+`post_investigation_outcome`; deferrals require `insufficient_total_support`,
+`insufficient_active_months`, `insufficient_recent_support`, or `manual_deferral`
+(`manual_deferral` requires a non-blank explanation).
+
+### Semantic suitability, leakage risk, and enforced selection criteria
+
+A label is a good target when it is semantically predictable from the initial issue text,
+is not a workflow or post-investigation outcome, and has enough support to learn from.
+`leakage_risk` records how likely a label is to be assigned only after investigation
+(workflow and resolution labels are high risk). The configuration carries a strict
+`selection_criteria` model (`min_total_support`, `min_active_months`, `min_recent_support`,
+`recent_window_months`, all strictly positive). These thresholds are enforced with
+inclusive boundaries: every included label must satisfy all three (`value >= threshold`
+passes), or the build fails. A future manually approved exception must use an explicit
+`criteria_override_explanation` on that label; criteria violations are never silently
+permitted. The exact criteria appear in both `label_policy.json` and `label_policy.md`.
+
+### Temporal support and the recent active-month window
+
+The policy enriches each label decision with objective facts derived by re-streaming the
+normalized dataset (the audit document does not carry per-label monthly support): total
+support, issue fraction, active-month count, first and last month, and recent-window
+support. The recent active-month window is formed by sorting the dataset's distinct active
+`%Y-%m` keys and taking the final `recent_window_months` of them (all of them when fewer
+exist); a label's recent-window support is the number of its issues created in those
+months. This is a policy-selection heuristic, not an ML data split. Dataset-derived counts
+are cross-checked against the audit so the two artifacts can never silently disagree.
+
+### Weak supervision
+
+Labels are applied by maintainers and are incomplete. The policy treats an issue without a
+given label as a negative example for that label (a weak-supervision assumption). Absent
+labels therefore reflect what maintainers applied, not ground truth, and coverage counts
+describe applied labels in this dataset only. Issues with no included target are kept, not
+dropped.
+
+### Immutable, content-addressed policy artifacts
+
+The policy id is `<dataset-id>-lp2-<12-hex-policy-input-hash-prefix>`. Identity is bound to
+every output-affecting input through a canonical `policy_input_sha256` over the policy
+version, dataset id, dataset output SHA-256, audit id, audit JSON SHA-256, configuration
+schema version, and configuration SHA-256. Changing any of these (dataset bytes, audit
+bytes, audit id, configuration semantics, configuration schema, or policy version) changes
+the policy id. The configuration hash itself is computed from the parsed, validated,
+label-sorted canonical configuration (sorted-key compact JSON), so reformatting or
+reordering label entries does not change identity, while changing any decision, role,
+leakage risk, reason, explanation, criteria, default, notes, or label inventory does. The
+policy never follows the audit package's current version implicitly: the explicit
+`--audit-id` is honoured as given and must reference an explicitly supported audit contract
+(audit version and document schema on the policy's allowlist), so a newly minted `a3` audit
+is not auto-accepted. An artifact is published under
+`data/policies/github/<slug>/<policy-id>/` as `label_policy.json`, `label_policy.md`, and
+`manifest.json` using the same deterministic, staged, rename-only, never-overwrite
+publication as audits. Re-running with the same dataset, audit, validated configuration,
+and policy version yields the same policy id and a cache hit. Existing `lp1` artifacts are
+immutable and coexist untouched with `lp2`. The full 125-label inventory
+lives in `label_policy.json`; the Markdown report uses concise deterministic sections. The
+human-authored configuration under `configs/label_policies/` is tracked in git; generated
+policy artifacts are git-ignored (do not commit `data/policies/`).
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.
