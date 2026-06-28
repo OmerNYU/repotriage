@@ -13,7 +13,7 @@ from repotriage.audit.builder import (
     audit_dataset,
     format_audit_summary,
 )
-from repotriage.audit.models import AuditError
+from repotriage.audit.models import AUDIT_ID_PATTERN, AuditError
 from repotriage.dataset.builder import (
     DEFAULT_PROCESSED_ROOT,
     build_dataset,
@@ -28,10 +28,17 @@ from repotriage.github.models import (
     InvalidRepositoryError,
     parse_repository,
 )
+from repotriage.label_policy.builder import (
+    DEFAULT_POLICIES_ROOT,
+    build_label_policy,
+    format_label_policy_summary,
+)
+from repotriage.label_policy.models import LabelPolicyError
 
 logger = logging.getLogger(__name__)
 
 _DATASET_ID_RE = re.compile(DATASET_ID_PATTERN)
+_AUDIT_ID_RE = re.compile(AUDIT_ID_PATTERN)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -112,6 +119,50 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_AUDITS_ROOT,
         help=f"Root directory for audit artifacts (default: {DEFAULT_AUDITS_ROOT})",
+    )
+
+    policy_parser = subparsers.add_parser(
+        "build-label-policy",
+        help="Build an immutable target-label policy from a dataset, audit, and config",
+    )
+    policy_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    policy_parser.add_argument(
+        "--dataset-id",
+        required=True,
+        help="Explicit normalized dataset id",
+    )
+    policy_parser.add_argument(
+        "--audit-id",
+        required=True,
+        help="Explicit audit id for the same dataset",
+    )
+    policy_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the human-authored label-policy configuration JSON",
+    )
+    policy_parser.add_argument(
+        "--processed-root",
+        type=Path,
+        default=DEFAULT_PROCESSED_ROOT,
+        help=f"Root directory for processed datasets (default: {DEFAULT_PROCESSED_ROOT})",
+    )
+    policy_parser.add_argument(
+        "--audits-root",
+        type=Path,
+        default=DEFAULT_AUDITS_ROOT,
+        help=f"Root directory for audit artifacts (default: {DEFAULT_AUDITS_ROOT})",
+    )
+    policy_parser.add_argument(
+        "--policies-root",
+        type=Path,
+        default=DEFAULT_POLICIES_ROOT,
+        help=f"Root directory for policy artifacts (default: {DEFAULT_POLICIES_ROOT})",
     )
     return parser
 
@@ -200,6 +251,47 @@ def run_audit_dataset(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_label_policy(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _DATASET_ID_RE.fullmatch(args.dataset_id):
+        print(
+            f"Invalid dataset id {args.dataset_id!r}. Expected a content-aware dataset id "
+            "such as 20260628T161306010651Z-n1-074402d21505.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not _AUDIT_ID_RE.fullmatch(args.audit_id):
+        print(
+            f"Invalid audit id {args.audit_id!r}. Expected an audit id such as "
+            "20260628T161306010651Z-n1-074402d21505-a2.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = build_label_policy(
+            repository,
+            args.dataset_id,
+            args.audit_id,
+            args.config,
+            processed_root=args.processed_root,
+            audits_root=args.audits_root,
+            policies_root=args.policies_root,
+        )
+    except (DatasetError, AuditError, LabelPolicyError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_label_policy_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -213,6 +305,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "audit-dataset":
         return run_audit_dataset(args)
+
+    if args.command == "build-label-policy":
+        return run_build_label_policy(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

@@ -212,6 +212,44 @@ def make_normalized_issue(
     )
 
 
+def write_label_policy_config(
+    path: Path,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    labels: list[dict[str, Any]],
+    default: dict[str, Any] | None = None,
+    selection_criteria: dict[str, int] | None = None,
+    notes: str = "",
+    config_schema_version: str = "2",
+    indent: int | None = 2,
+) -> Path:
+    """Write an lp2 label-policy configuration JSON file and return its path."""
+    resolved_default = default or {
+        "decision": "exclude",
+        "role": "unreviewed",
+        "reason_code": "unreviewed_default",
+        "leakage_risk": "high",
+        "explanation": "default exclusion",
+    }
+    payload: dict[str, Any] = {
+        "config_schema_version": config_schema_version,
+        "repository": repository,
+        "notes": notes,
+        "selection_criteria": selection_criteria
+        or {
+            "min_total_support": 1,
+            "min_active_months": 1,
+            "min_recent_support": 1,
+            "recent_window_months": 4,
+        },
+        "default": resolved_default,
+        "labels": labels,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=indent) + "\n", encoding="utf-8")
+    return path
+
+
 def write_processed_dataset(
     processed_root: Path,
     repository: RepositoryRef,
