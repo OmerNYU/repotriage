@@ -171,24 +171,27 @@ def _reject_duplicates(issues: list[NormalizedIssue]) -> None:
         seen_numbers.add(issue.issue_number)
 
 
-def validate_processed_dataset(
+def validate_processed_dataset_integrity(
     dataset_dir: Path,
     *,
     expected_repository: RepositoryRef,
-    expected_normalizer_version: str,
-    expected_issue_schema_version: str,
-    expected_source_manifest_schema_version: str,
     expected_dataset_id: str,
-    expected_source_manifest_relpath: str,
-    expected_source_manifest_sha256: str,
-    expected_source_snapshot_sha256: str,
+    expected_issue_schema_version: str,
     check_dir_name: bool = True,
 ) -> ProcessedManifest:
-    """Validate an on-disk processed dataset snapshot, raising on any corruption.
+    """Validate the integrity of a locally available processed dataset snapshot.
 
-    A lineage mismatch (versions, paths, or hashes) is reported as corruption and is
-    never treated as a cache hit. Callers must not overwrite the existing directory.
+    This checks only the locally available processed artifact and never reads raw
+    GitHub pages, requires the current raw cache, or revalidates raw-source lineage. It
+    confirms: the dataset directory and ``manifest.json`` exist and parse (enforcing the
+    processed-manifest invariants), the directory name matches the manifest dataset id,
+    the manifest dataset id and repository match the explicitly requested values, the
+    issue schema version is supported, the output path is safe and present, and the
+    actual output bytes hash to ``manifest.output_sha256``.
     """
+    if not dataset_dir.is_dir():
+        raise DatasetCorruptionError(f"Processed dataset directory does not exist: {dataset_dir}")
+
     manifest_path = dataset_dir / "manifest.json"
     if not manifest_path.is_file():
         raise DatasetCorruptionError(f"Missing processed manifest at {manifest_path}")
@@ -223,16 +226,65 @@ def validate_processed_dataset(
             f"expected {expected_repository.full_name!r}."
         )
 
-    if manifest.normalizer_version != expected_normalizer_version:
-        raise DatasetCorruptionError(
-            f"Processed manifest normalizer_version {manifest.normalizer_version!r} does not "
-            f"match expected {expected_normalizer_version!r}."
-        )
-
     if manifest.issue_schema_version != expected_issue_schema_version:
         raise DatasetCorruptionError(
             f"Processed manifest issue_schema_version {manifest.issue_schema_version!r} does "
             f"not match expected {expected_issue_schema_version!r}."
+        )
+
+    try:
+        output_path = resolve_within_directory(dataset_dir, manifest.output_file)
+    except ValueError as exc:
+        raise DatasetCorruptionError(
+            f"Processed manifest output_file is unsafe: {manifest.output_file!r}"
+        ) from exc
+
+    if not output_path.is_file():
+        raise DatasetCorruptionError(f"Missing dataset output file: {manifest.output_file}")
+
+    actual_sha256 = _sha256_hex(output_path.read_bytes())
+    if actual_sha256 != manifest.output_sha256:
+        raise DatasetCorruptionError(
+            f"Dataset output hash mismatch for {manifest.output_file}: "
+            f"expected {manifest.output_sha256}, found {actual_sha256}."
+        )
+
+    return manifest
+
+
+def validate_processed_dataset(
+    dataset_dir: Path,
+    *,
+    expected_repository: RepositoryRef,
+    expected_normalizer_version: str,
+    expected_issue_schema_version: str,
+    expected_source_manifest_schema_version: str,
+    expected_dataset_id: str,
+    expected_source_manifest_relpath: str,
+    expected_source_manifest_sha256: str,
+    expected_source_snapshot_sha256: str,
+    check_dir_name: bool = True,
+) -> ProcessedManifest:
+    """Validate a processed dataset for the dataset builder's current-raw-source needs.
+
+    This first runs :func:`validate_processed_dataset_integrity` (local artifact
+    integrity) and then additionally verifies compatibility with the currently available
+    raw source: the normalizer version and the raw-source lineage fields. A lineage
+    mismatch (versions, paths, or hashes) is reported as corruption and is never treated
+    as a cache hit. Callers must not overwrite the existing directory.
+    """
+    manifest = validate_processed_dataset_integrity(
+        dataset_dir,
+        expected_repository=expected_repository,
+        expected_dataset_id=expected_dataset_id,
+        expected_issue_schema_version=expected_issue_schema_version,
+        check_dir_name=check_dir_name,
+    )
+
+    if manifest.normalizer_version != expected_normalizer_version:
+        raise DatasetCorruptionError(
+            f"Processed manifest normalizer_version {manifest.normalizer_version!r} does not "
+            f"match expected {expected_normalizer_version!r}."
         )
 
     if manifest.source_manifest_schema_version != expected_source_manifest_schema_version:
@@ -257,23 +309,6 @@ def validate_processed_dataset(
         raise DatasetCorruptionError(
             "Processed manifest source_snapshot_sha256 does not match the current raw snapshot; "
             "the raw pages may have changed since this dataset was built."
-        )
-
-    try:
-        output_path = resolve_within_directory(dataset_dir, manifest.output_file)
-    except ValueError as exc:
-        raise DatasetCorruptionError(
-            f"Processed manifest output_file is unsafe: {manifest.output_file!r}"
-        ) from exc
-
-    if not output_path.is_file():
-        raise DatasetCorruptionError(f"Missing dataset output file: {manifest.output_file}")
-
-    actual_sha256 = _sha256_hex(output_path.read_bytes())
-    if actual_sha256 != manifest.output_sha256:
-        raise DatasetCorruptionError(
-            f"Dataset output hash mismatch for {manifest.output_file}: "
-            f"expected {manifest.output_sha256}, found {actual_sha256}."
         )
 
     return manifest

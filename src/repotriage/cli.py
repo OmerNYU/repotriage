@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
+from repotriage.audit.builder import (
+    DEFAULT_AUDITS_ROOT,
+    audit_dataset,
+    format_audit_summary,
+)
+from repotriage.audit.models import AuditError
 from repotriage.dataset.builder import (
     DEFAULT_PROCESSED_ROOT,
     build_dataset,
     format_dataset_summary,
 )
-from repotriage.dataset.models import DatasetError
+from repotriage.dataset.models import DATASET_ID_PATTERN, DatasetError
 from repotriage.github.client import GitHubAPIError, GitHubRateLimitError
 from repotriage.github.ingestion import DEFAULT_OUTPUT_ROOT, fetch_repository_issues, format_summary
 from repotriage.github.models import (
@@ -23,6 +30,8 @@ from repotriage.github.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_DATASET_ID_RE = re.compile(DATASET_ID_PATTERN)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +85,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_PROCESSED_ROOT,
         help=f"Root directory for processed datasets (default: {DEFAULT_PROCESSED_ROOT})",
+    )
+
+    audit_parser = subparsers.add_parser(
+        "audit-dataset",
+        help="Audit one explicit normalized dataset into an immutable audit artifact",
+    )
+    audit_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    audit_parser.add_argument(
+        "--dataset-id",
+        required=True,
+        help="Explicit normalized dataset id to audit",
+    )
+    audit_parser.add_argument(
+        "--processed-root",
+        type=Path,
+        default=DEFAULT_PROCESSED_ROOT,
+        help=f"Root directory for processed datasets (default: {DEFAULT_PROCESSED_ROOT})",
+    )
+    audit_parser.add_argument(
+        "--audits-root",
+        type=Path,
+        default=DEFAULT_AUDITS_ROOT,
+        help=f"Root directory for audit artifacts (default: {DEFAULT_AUDITS_ROOT})",
     )
     return parser
 
@@ -134,6 +170,36 @@ def run_build_dataset(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_audit_dataset(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _DATASET_ID_RE.fullmatch(args.dataset_id):
+        print(
+            f"Invalid dataset id {args.dataset_id!r}. Expected a content-aware dataset id "
+            "such as 20260628T161306010651Z-n1-074402d21505.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = audit_dataset(
+            repository,
+            args.dataset_id,
+            processed_root=args.processed_root,
+            audits_root=args.audits_root,
+        )
+    except (DatasetError, AuditError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_audit_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -144,6 +210,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "build-dataset":
         return run_build_dataset(args)
+
+    if args.command == "audit-dataset":
+        return run_audit_dataset(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

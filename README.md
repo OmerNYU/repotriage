@@ -1,6 +1,6 @@
 # RepoTriage
 
-RepoTriage is an ML-assisted GitHub issue-triage platform. This repository currently implements two vertical slices: downloading GitHub repository issues and caching the original API responses locally (raw ingestion), and normalizing one raw snapshot into an immutable, issue-only dataset (dataset normalization).
+RepoTriage is an ML-assisted GitHub issue-triage platform. This repository currently implements three vertical slices: downloading GitHub repository issues and caching the original API responses locally (raw ingestion), normalizing one raw snapshot into an immutable, issue-only dataset (dataset normalization), and auditing one normalized dataset into an immutable, deterministic audit artifact (dataset audit).
 
 ## Installation
 
@@ -191,6 +191,122 @@ Four version concepts are tracked separately in the processed manifest:
 manifest enforces `raw_records_read == pull_requests_excluded + issues_written`.
 
 Processed data is local and git-ignored; do not commit `data/processed/`.
+
+## Auditing a normalized dataset
+
+Once a normalized dataset exists, audit one explicit dataset into an immutable audit
+artifact:
+
+```bash
+repotriage audit-dataset \
+  --repo pandas-dev/pandas \
+  --dataset-id 20260628T161306010651Z-n1-074402d21505
+```
+
+Both `--repo` and `--dataset-id` are required. The command audits exactly one explicitly
+named dataset; there is no implicit "latest" selection. Optional flags:
+
+- `--processed-root PATH` overrides the processed-data root (default `data/processed/github`)
+- `--audits-root PATH` overrides the audit-artifact root (default `data/audits/github`)
+
+### Normalized data versus audit artifacts
+
+The normalized dataset is the trusted input contract for an audit: the audit subsystem
+reads only the validated `issues.jsonl` and its `manifest.json` and never parses raw
+GitHub pages. The dataset subsystem does not depend on the audit subsystem. An audit is
+a derived, read-only report; it never modifies the normalized dataset.
+
+Before analysis, the audit validates the integrity of the normalized dataset
+(`validate_processed_dataset_integrity`): manifest parsing and invariants, directory-name
+and id consistency, the requested repository and dataset id, a supported issue schema, safe
+paths, and an output SHA-256 check. This integrity check is deliberately separate from the
+builder's raw-source compatibility checks, so an audit depends only on the local processed
+artifact and never requires the (mutable) raw GitHub cache. A corrupt dataset is reported
+rather than audited, and a dataset containing zero issues is rejected before anything is
+written.
+
+### Output layout
+
+An audit writes an immutable, versioned artifact:
+
+```text
+data/audits/github/pandas-dev__pandas/<dataset-id>-a2/
+├── audit.json
+├── audit.md
+└── manifest.json
+```
+
+`audit.json` is the full, machine-readable audit. `audit.md` is a concise human-readable
+report with sections for dataset identity, repository overview, text quality, label
+distribution, the rare-label summary, top labels, top co-occurring label pairs, temporal
+coverage, suitability warnings, and an interpretation caveat. The complete label and
+label-pair lists live in `audit.json`; the Markdown shows only a deterministic top subset.
+
+### Objective metrics versus policy warnings
+
+The audit strictly separates two concerns:
+
+- Objective statistics describe the dataset without judgement: issue/label/state counts
+  and fractions, title/body/total-text character-length distributions (`total_text_chars`
+  is the per-issue sum of title and body lengths) and structural indicators (fenced code
+  blocks, URLs, Markdown headings, empty/short/long bodies), label frequencies, cardinality
+  and density, rare-label support buckets, label co-occurrence pairs, and monthly temporal
+  coverage in UTC. Temporal coverage distinguishes the active month count (distinct months
+  that actually contain issues) from the calendar span in months (the inclusive number of
+  months between the earliest and latest issue), which can differ for a sparse dataset.
+  Percentiles and the median use a single explicit rule (type-7 linear interpolation) so
+  results never depend on a library default.
+- Suitability warnings are heuristics with a stable code, severity, measured value,
+  threshold, and explanation (for example `INSUFFICIENT_LABELLED_ISSUES`,
+  `HIGH_UNLABELLED_RATE`, `LIMITED_TEMPORAL_COVERAGE`, `SEVERE_LABEL_LONG_TAIL`, and
+  `LOW_TEXT_COMPLETENESS`). These thresholds are versioned heuristics tied to the audit
+  version, not universal scientific rules, and there is deliberately no single aggregate
+  "quality score". Label-role classification (workflow, type, or component labels) is
+  still manual and out of scope.
+
+### Immutable, content-aware audit IDs
+
+The audit id is the dataset id plus an audit-version suffix, for example
+`20260628T161306010651Z-n1-074402d21505-a2` with audit version `2`. Because the analysis
+and policy for a given audit version are fixed, no configuration hash is part of the
+identity. Re-running an audit against the same valid dataset validates and reuses the
+existing artifact (an audit-cache hit) instead of overwriting it; immutable audit ids are
+never overwritten. An existing corrupt or incompatible audit is reported as an error and
+left untouched. Because the version suffix is part of the path, artifacts from different
+audit versions coexist: a previously published `-a1` artifact is never read or written by
+v2 code and remains intact alongside new `-a2` artifacts. If thresholds later become
+configurable, audit identity would need to additionally incorporate that configuration
+identity.
+
+### Deterministic JSON and Markdown
+
+`audit.json` and `audit.md` are deterministic for the same normalized dataset bytes and
+audit version. `audit.json` is UTF-8, with sorted keys, two-space indentation, `\n`
+newlines, a trailing newline, and full-precision numbers; `audit.md` renders counts as
+integers, fractions to four decimals, character-length means/percentiles to one decimal,
+and datetimes in canonical UTC. Neither file contains a build timestamp. SHA-256 hashes of
+both files are recorded in the audit manifest, and the only changing field across rebuilds
+is the manifest's `built_at`.
+
+### Lineage manifest
+
+The audit `manifest.json` binds the artifact to its source: `schema_version` (manifest
+schema), `audit_document_schema_version` (the `audit.json` document schema, mirrored by the
+top-level `schema_version` field inside `audit.json`), `audit_version` (the analysis/policy
+version), `audit_id`, `repository`, `dataset_id`, `dataset_output_sha256`,
+`issue_schema_version`, `normalizer_version`, `built_at`, `issues_analyzed`, and the file
+names and SHA-256 hashes of `audit.json` and `audit.md`. Validation recomputes both report
+hashes and then semantically cross-checks the parsed `audit.json` against the manifest
+(audit id, repository, dataset id and output hash, versions, and `issues_analyzed` versus
+the document's total issue count). These checks detect accidental local corruption and
+inconsistency; they are not designed to resist a coordinated rewrite of every file and its
+recorded hash together.
+
+### Audit limitations
+
+An audit describes only the bytes of the normalized dataset it was given; it cannot detect
+sampling bias in how the raw issues were originally fetched, and it does not interpret
+label semantics. Audit artifacts are local and git-ignored; do not commit `data/audits/`.
 
 ## Limitations: mutable raw history vs immutable processed history
 
