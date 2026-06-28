@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,14 @@ from typing import Any
 
 import httpx
 
+from repotriage.dataset.builder import serialize_issues_jsonl
+from repotriage.dataset.models import (
+    NORMALIZER_VERSION,
+    NormalizedIssue,
+    ProcessedManifest,
+    compute_dataset_id,
+    source_manifest_relpath,
+)
 from repotriage.github.models import (
     DEFAULT_ISSUE_REQUEST_PARAMETERS,
     GITHUB_API_VERSION,
@@ -157,3 +166,100 @@ def json_response(
         content=json.dumps(payload).encode("utf-8"),
         request=httpx.Request("GET", "https://api.github.com/test"),
     )
+
+
+DEFAULT_CREATED_AT = datetime(2025, 3, 1, 12, 0, 0, tzinfo=UTC)
+DEFAULT_PROCESSED_FETCHED_AT = datetime(2026, 6, 28, 16, 13, 6, 10651, tzinfo=UTC)
+
+
+def make_normalized_issue(
+    number: int,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    issue_id: int | None = None,
+    title: str | None = None,
+    body: str = "Body text",
+    labels: list[str] | None = None,
+    state: str = "open",
+    author_login: str | None = "octocat",
+    author_type: str | None = "User",
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
+    closed_at: datetime | None = None,
+    comments_count: int = 0,
+    source_page: str = "pages/page_0001.json",
+) -> NormalizedIssue:
+    """Construct a valid :class:`NormalizedIssue` for audit tests."""
+    created = created_at or DEFAULT_CREATED_AT
+    updated = updated_at or created
+    resolved_author_type = author_type if author_login is not None else None
+    return NormalizedIssue(
+        repository=repository,
+        issue_id=issue_id if issue_id is not None else number,
+        issue_number=number,
+        title=title if title is not None else f"Issue {number}",
+        body=body,
+        labels=labels if labels is not None else [],
+        state=state,
+        author_login=author_login,
+        author_type=resolved_author_type,
+        created_at=created,
+        updated_at=updated,
+        closed_at=closed_at,
+        comments_count=comments_count,
+        html_url=f"https://github.com/{repository}/issues/{number}",
+        source_page=source_page,
+    )
+
+
+def write_processed_dataset(
+    processed_root: Path,
+    repository: RepositoryRef,
+    issues: list[NormalizedIssue],
+    *,
+    fetched_at: datetime | None = None,
+    normalizer_version: str = NORMALIZER_VERSION,
+    source_snapshot_sha256: str | None = None,
+    pull_requests_excluded: int = 0,
+) -> tuple[Path, str]:
+    """Write a synthetic but valid normalized dataset and return (dir, dataset_id)."""
+    fetched = fetched_at or DEFAULT_PROCESSED_FETCHED_AT
+    snapshot = source_snapshot_sha256 or ("a" * 64)
+    manifest_sha = "b" * 64
+
+    output_bytes = serialize_issues_jsonl(issues)
+    output_sha256 = hashlib.sha256(output_bytes).hexdigest()
+    dataset_id = compute_dataset_id(fetched, normalizer_version, snapshot)
+
+    issues_written = len(issues)
+    unlabelled = sum(1 for issue in issues if not issue.labels)
+    empty_body = sum(1 for issue in issues if issue.body == "")
+
+    manifest = ProcessedManifest(
+        dataset_id=dataset_id,
+        repository=repository.full_name,
+        normalizer_version=normalizer_version,
+        built_at=fetched,
+        source_manifest=source_manifest_relpath(repository.slug),
+        source_manifest_sha256=manifest_sha,
+        source_snapshot_sha256=snapshot,
+        source_manifest_schema_version="2",
+        source_fetched_at=fetched,
+        source_api_version=GITHUB_API_VERSION,
+        source_pages_fetched=1,
+        raw_records_read=issues_written + pull_requests_excluded,
+        pull_requests_excluded=pull_requests_excluded,
+        issues_written=issues_written,
+        unlabelled_issues=unlabelled,
+        empty_body_issues=empty_body,
+        output_file="issues.jsonl",
+        output_sha256=output_sha256,
+    )
+
+    dataset_dir = processed_root / repository.slug / dataset_id
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    (dataset_dir / "issues.jsonl").write_bytes(output_bytes)
+    (dataset_dir / "manifest.json").write_text(
+        manifest.model_dump_json() + "\n", encoding="utf-8"
+    )
+    return dataset_dir, dataset_id
