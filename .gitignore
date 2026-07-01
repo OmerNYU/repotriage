@@ -26,6 +26,7 @@ data/raw/
 data/processed/
 data/audits/
 data/policies/
+data/model_ready/
 artifacts/
 
 # Operating-system files

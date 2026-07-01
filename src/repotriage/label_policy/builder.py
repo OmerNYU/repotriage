@@ -185,24 +185,23 @@ def _verify_report_file(
         ) from exc
 
 
-def validate_label_policy_artifact(
+def validate_label_policy_artifact_integrity(
     policy_dir: Path,
     *,
     expected_repository: RepositoryRef,
     expected_dataset_id: str,
     expected_dataset_output_sha256: str,
-    expected_audit_id: str,
-    expected_audit_json_sha256: str,
-    expected_audit_version: str,
-    expected_config_schema_version: str,
-    expected_config_sha256: str,
-    expected_issue_schema_version: str,
-    expected_normalizer_version: str,
     expected_policy_id: str,
-    expected_policy_input_sha256: str,
     check_dir_name: bool = True,
 ) -> tuple[LabelPolicyManifest, LabelPolicyDocument]:
-    """Validate an on-disk policy artifact, raising on any corruption or mismatch."""
+    """Validate a policy artifact for downstream consumers (dataset + policy lineage only).
+
+    This checks the locally available policy artifact without requiring the original audit
+    artifact, configuration file, or builder-specific input hashes. It confirms manifest
+    parsing and invariants, directory and policy id, repository and dataset lineage,
+    supported policy and document schema versions, safe report paths, JSON and Markdown
+    hashes, parses the policy document, and semantically cross-checks document and manifest.
+    """
     manifest_path = policy_dir / "manifest.json"
     if not manifest_path.is_file():
         raise LabelPolicyCorruptionError(f"Missing policy manifest at {manifest_path}")
@@ -225,9 +224,8 @@ def validate_label_policy_artifact(
             f"{manifest.policy_id!r}."
         )
 
-    expectations: list[tuple[str, object, object]] = [
+    integrity_expectations: list[tuple[str, object, object]] = [
         ("policy_id", manifest.policy_id, expected_policy_id),
-        ("policy_input_sha256", manifest.policy_input_sha256, expected_policy_input_sha256),
         ("policy_version", manifest.policy_version, LABEL_POLICY_VERSION),
         ("schema_version", manifest.schema_version, LABEL_POLICY_MANIFEST_SCHEMA_VERSION),
         (
@@ -238,19 +236,8 @@ def validate_label_policy_artifact(
         ("repository", manifest.repository, expected_repository.full_name),
         ("dataset_id", manifest.dataset_id, expected_dataset_id),
         ("dataset_output_sha256", manifest.dataset_output_sha256, expected_dataset_output_sha256),
-        ("audit_id", manifest.audit_id, expected_audit_id),
-        ("audit_json_sha256", manifest.audit_json_sha256, expected_audit_json_sha256),
-        ("audit_version", manifest.audit_version, expected_audit_version),
-        (
-            "config_schema_version",
-            manifest.config_schema_version,
-            expected_config_schema_version,
-        ),
-        ("config_sha256", manifest.config_sha256, expected_config_sha256),
-        ("issue_schema_version", manifest.issue_schema_version, expected_issue_schema_version),
-        ("normalizer_version", manifest.normalizer_version, expected_normalizer_version),
     ]
-    for field_name, actual, expected in expectations:
+    for field_name, actual, expected in integrity_expectations:
         if actual != expected:
             raise LabelPolicyCorruptionError(
                 f"Policy manifest {field_name} {actual!r} does not match expected "
@@ -271,6 +258,57 @@ def validate_label_policy_artifact(
     )
     assert document is not None
     _cross_check_document_against_manifest(manifest, document)
+    return manifest, document
+
+
+def validate_label_policy_artifact(
+    policy_dir: Path,
+    *,
+    expected_repository: RepositoryRef,
+    expected_dataset_id: str,
+    expected_dataset_output_sha256: str,
+    expected_audit_id: str,
+    expected_audit_json_sha256: str,
+    expected_audit_version: str,
+    expected_config_schema_version: str,
+    expected_config_sha256: str,
+    expected_issue_schema_version: str,
+    expected_normalizer_version: str,
+    expected_policy_id: str,
+    expected_policy_input_sha256: str,
+    check_dir_name: bool = True,
+) -> tuple[LabelPolicyManifest, LabelPolicyDocument]:
+    """Validate an on-disk policy artifact for the policy builder, raising on mismatch."""
+    manifest, document = validate_label_policy_artifact_integrity(
+        policy_dir,
+        expected_repository=expected_repository,
+        expected_dataset_id=expected_dataset_id,
+        expected_dataset_output_sha256=expected_dataset_output_sha256,
+        expected_policy_id=expected_policy_id,
+        check_dir_name=check_dir_name,
+    )
+
+    builder_expectations: list[tuple[str, object, object]] = [
+        ("policy_input_sha256", manifest.policy_input_sha256, expected_policy_input_sha256),
+        ("audit_id", manifest.audit_id, expected_audit_id),
+        ("audit_json_sha256", manifest.audit_json_sha256, expected_audit_json_sha256),
+        ("audit_version", manifest.audit_version, expected_audit_version),
+        (
+            "config_schema_version",
+            manifest.config_schema_version,
+            expected_config_schema_version,
+        ),
+        ("config_sha256", manifest.config_sha256, expected_config_sha256),
+        ("issue_schema_version", manifest.issue_schema_version, expected_issue_schema_version),
+        ("normalizer_version", manifest.normalizer_version, expected_normalizer_version),
+    ]
+    for field_name, actual, expected in builder_expectations:
+        if actual != expected:
+            raise LabelPolicyCorruptionError(
+                f"Policy manifest {field_name} {actual!r} does not match expected "
+                f"{expected!r}."
+            )
+
     return manifest, document
 
 

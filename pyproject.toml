@@ -29,6 +29,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: tests that require canonical local data artifacts",
+]
 
 [tool.ruff]
 target-version = "py311"

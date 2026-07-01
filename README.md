@@ -414,6 +414,62 @@ lives in `label_policy.json`; the Markdown report uses concise deterministic sec
 human-authored configuration under `configs/label_policies/` is tracked in git; generated
 policy artifacts are git-ignored (do not commit `data/policies/`).
 
+## Building a model-ready dataset
+
+```bash
+repotriage build-model-dataset \
+  --repo pandas-dev/pandas \
+  --dataset-id 20260628T161306010651Z-n1-074402d21505 \
+  --policy-id 20260628T161306010651Z-n1-074402d21505-lp2-95899f0f5b37 \
+  --config configs/model_datasets/pandas-dev__pandas/temporal-v1.json
+```
+
+A model-ready dataset is the first ML-facing artifact. It consumes only the validated
+normalized dataset and the validated label-policy artifact; it does not read the mutable raw
+cache or require the audit artifact at build time. For each issue it retains stable identity
+fields, snapshot title and body (as fetched from the normalized dataset), a deterministic
+classifier feature text, canonical target labels and a fixed-order binary target vector, and a
+temporal train/validation/test split assignment.
+
+The current contract is model-dataset version 1 (`md1`). Feature text uses
+`TEXT_REPRESENTATION_VERSION` 1: `[TITLE]\\n<title>\\n\\n[BODY]\\n<body>` with CRLF/CR
+normalized to LF and no other cleaning. Target order comes from
+`policy_document.coverage.included_labels` exactly. Records are sorted by
+`(created_at, issue_id)`.
+
+Temporal splits are controlled by a tracked configuration under `configs/model_datasets/`
+(not CLI defaults). The pandas `temporal-v1` config uses calendar boundaries:
+train before `2026-02-01T00:00:00Z`, validation from February–March 2026, test from
+April 2026 onward. Zero positives for any included label in train, validation, or test is a
+hard build error; 1–4 positives in validation or test produces structured warnings in
+`split_report.json`. All-zero target vectors are retained.
+
+Identity binds the normalized dataset output hash, policy JSON hash, split-config hash,
+text-representation version, and temporal-splitter version via `model_dataset_input_sha256`.
+An artifact is published under `data/model_ready/github/<slug>/<model-dataset-id>/` as
+`records.jsonl`, `label_map.json`, `split_report.json`, `split_report.md`, and
+`manifest.json` using the same staged, rename-only, never-overwrite publication pattern as
+other subsystems. Generated model-ready artifacts are git-ignored (do not commit
+`data/model_ready/`).
+
+### Evaluation limitations
+
+**Snapshot-text leakage risk.** Records retain the title and body from the normalized
+dataset snapshot, not a guaranteed historical version at issue creation time. GitHub issue
+text can be edited after creation; this pipeline does not fetch or store prior body versions.
+Models trained on `feature_text` may therefore see post-hoc edits present in the processed
+snapshot.
+
+**Recent-label right-censoring risk.** Labels reflect the policy snapshot applied at build
+time. Issues created near the end of the dataset window may not yet have received their
+final label set when the snapshot was taken, so tail-period issues can be under-labeled
+relative to their eventual state.
+
+Any change to record, label-map, or split-report schema versions or to support-validation
+semantics requires bumping `MODEL_DATASET_VERSION` (and thus the model-dataset id). Output
+contract schema versions are listed in `OUTPUT_CONTRACT_VERSIONS` in
+`src/repotriage/model_dataset/models.py`.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.
