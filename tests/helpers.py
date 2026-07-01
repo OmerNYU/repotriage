@@ -250,6 +250,34 @@ def write_label_policy_config(
     return path
 
 
+def write_temporal_split_config(
+    path: Path,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    validation_start: str = "2026-02-01T00:00:00Z",
+    test_start: str = "2026-04-01T00:00:00Z",
+    low_support_warning_threshold: int = 5,
+) -> Path:
+    """Write a temporal split configuration JSON file and return its path."""
+    payload = {
+        "config_schema_version": "1",
+        "repository": repository,
+        "split_strategy": "temporal_calendar",
+        "validation_start": validation_start,
+        "test_start": test_start,
+        "boundary_semantics": {
+            "train": "created_at < validation_start",
+            "validation": "validation_start <= created_at < test_start",
+            "test": "created_at >= test_start",
+        },
+        "minimum_positive_support": {"train": 1, "validation": 1, "test": 1},
+        "low_support_warning_threshold": low_support_warning_threshold,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def write_processed_dataset(
     processed_root: Path,
     repository: RepositoryRef,

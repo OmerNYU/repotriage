@@ -61,6 +61,10 @@ class DatasetCorruptionError(DatasetError):
     """Raised when an existing processed dataset snapshot is corrupt or mismatched."""
 
 
+class DatasetReadError(DatasetError):
+    """Raised when streaming or validating normalized issue JSONL fails."""
+
+
 def _ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)

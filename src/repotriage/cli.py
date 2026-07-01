@@ -33,12 +33,20 @@ from repotriage.label_policy.builder import (
     build_label_policy,
     format_label_policy_summary,
 )
-from repotriage.label_policy.models import LabelPolicyError
+from repotriage.label_policy.models import POLICY_ID_PATTERN, LabelPolicyError
+from repotriage.model_dataset.builder import (
+    DEFAULT_MODEL_READY_ROOT,
+    build_model_dataset,
+    format_model_dataset_summary,
+)
+from repotriage.model_dataset.models import MODEL_DATASET_ID_PATTERN, ModelDatasetError
 
 logger = logging.getLogger(__name__)
 
 _DATASET_ID_RE = re.compile(DATASET_ID_PATTERN)
 _AUDIT_ID_RE = re.compile(AUDIT_ID_PATTERN)
+_POLICY_ID_RE = re.compile(POLICY_ID_PATTERN)
+_MODEL_DATASET_ID_RE = re.compile(MODEL_DATASET_ID_PATTERN)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -163,6 +171,50 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_POLICIES_ROOT,
         help=f"Root directory for policy artifacts (default: {DEFAULT_POLICIES_ROOT})",
+    )
+
+    model_dataset_parser = subparsers.add_parser(
+        "build-model-dataset",
+        help="Build an immutable model-ready dataset from a dataset, policy, and split config",
+    )
+    model_dataset_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    model_dataset_parser.add_argument(
+        "--dataset-id",
+        required=True,
+        help="Explicit normalized dataset id",
+    )
+    model_dataset_parser.add_argument(
+        "--policy-id",
+        required=True,
+        help="Explicit label-policy id for the same dataset",
+    )
+    model_dataset_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the temporal split configuration JSON",
+    )
+    model_dataset_parser.add_argument(
+        "--processed-root",
+        type=Path,
+        default=DEFAULT_PROCESSED_ROOT,
+        help=f"Root directory for processed datasets (default: {DEFAULT_PROCESSED_ROOT})",
+    )
+    model_dataset_parser.add_argument(
+        "--policies-root",
+        type=Path,
+        default=DEFAULT_POLICIES_ROOT,
+        help=f"Root directory for policy artifacts (default: {DEFAULT_POLICIES_ROOT})",
+    )
+    model_dataset_parser.add_argument(
+        "--model-ready-root",
+        type=Path,
+        default=DEFAULT_MODEL_READY_ROOT,
+        help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
     )
     return parser
 
@@ -292,6 +344,47 @@ def run_build_label_policy(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_model_dataset(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _DATASET_ID_RE.fullmatch(args.dataset_id):
+        print(
+            f"Invalid dataset id {args.dataset_id!r}. Expected a content-aware dataset id "
+            "such as 20260628T161306010651Z-n1-074402d21505.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not _POLICY_ID_RE.fullmatch(args.policy_id):
+        print(
+            f"Invalid policy id {args.policy_id!r}. Expected a policy id such as "
+            "20260628T161306010651Z-n1-074402d21505-lp2-95899f0f5b37.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = build_model_dataset(
+            repository,
+            args.dataset_id,
+            args.policy_id,
+            args.config,
+            processed_root=args.processed_root,
+            policies_root=args.policies_root,
+            model_ready_root=args.model_ready_root,
+        )
+    except (DatasetError, LabelPolicyError, ModelDatasetError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_model_dataset_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -308,6 +401,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "build-label-policy":
         return run_build_label_policy(args)
+
+    if args.command == "build-model-dataset":
+        return run_build_model_dataset(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

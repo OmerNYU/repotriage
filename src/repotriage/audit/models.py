@@ -23,6 +23,7 @@ from pydantic import (
 
 from repotriage.dataset.models import (
     DatasetId,
+    DatasetReadError,
     Sha256Hex,
     _ensure_utc,
     format_utc_datetime,
@@ -60,7 +61,7 @@ class AuditDatasetError(AuditError):
     """Raised when the requested normalized dataset cannot be selected or read."""
 
 
-class AuditReadError(AuditError):
+class AuditReadError(AuditError, DatasetReadError):
     """Raised when streaming or validating the normalized JSONL fails."""
 
 
