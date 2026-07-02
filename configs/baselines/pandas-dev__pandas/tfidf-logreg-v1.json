@@ -1,0 +1,67 @@
+{
+  "baseline_version": "4",
+  "candidate_set_version": "1",
+  "candidates": [
+    {
+      "candidate_id": "c1_unigram",
+      "logreg": {
+        "C": 1.0,
+        "class_weight": null,
+        "max_iter": 2000,
+        "solver": "lbfgs"
+      },
+      "tfidf": {
+        "analyzer": "word",
+        "lowercase": true,
+        "min_df": 2,
+        "ngram_range": [1, 1],
+        "norm": "l2",
+        "sublinear_tf": true
+      }
+    },
+    {
+      "candidate_id": "c2_bigram",
+      "logreg": {
+        "C": 1.0,
+        "class_weight": null,
+        "max_iter": 2000,
+        "solver": "lbfgs"
+      },
+      "tfidf": {
+        "analyzer": "word",
+        "lowercase": true,
+        "min_df": 2,
+        "ngram_range": [1, 2],
+        "norm": "l2",
+        "sublinear_tf": true
+      }
+    },
+    {
+      "candidate_id": "c3_bigram_balanced",
+      "logreg": {
+        "C": 1.0,
+        "class_weight": "balanced",
+        "max_iter": 2000,
+        "solver": "lbfgs"
+      },
+      "tfidf": {
+        "analyzer": "word",
+        "lowercase": true,
+        "min_df": 2,
+        "ngram_range": [1, 2],
+        "norm": "l2",
+        "sublinear_tf": true
+      }
+    }
+  ],
+  "config_schema_version": "1",
+  "metric_contract_version": "2",
+  "random_state": 42,
+  "repository": "pandas-dev/pandas",
+  "selection_rule_version": "1",
+  "threshold_policy": {
+    "score_type": "probability_estimates",
+    "threshold": 0.5
+  },
+  "training_protocol_version": "train_only_v1"
+}

@@ -329,3 +329,74 @@ def write_processed_dataset(
         manifest.model_dump_json() + "\n", encoding="utf-8"
     )
     return dataset_dir, dataset_id
+
+
+def write_baseline_config(path: Path, *, repository: str = DEFAULT_TEST_REPOSITORY) -> Path:
+    """Write a minimal baseline configuration JSON file and return its path."""
+    payload = {
+        "config_schema_version": "1",
+        "baseline_version": "4",
+        "repository": repository,
+        "candidate_set_version": "1",
+        "selection_rule_version": "1",
+        "metric_contract_version": "2",
+        "training_protocol_version": "train_only_v1",
+        "random_state": 42,
+        "threshold_policy": {"threshold": 0.5, "score_type": "probability_estimates"},
+        "candidates": [
+            {
+                "candidate_id": "c1_unigram",
+                "tfidf": {
+                    "analyzer": "word",
+                    "ngram_range": [1, 1],
+                    "lowercase": True,
+                    "min_df": 1,
+                    "sublinear_tf": True,
+                    "norm": "l2",
+                },
+                "logreg": {
+                    "C": 1.0,
+                    "solver": "lbfgs",
+                    "max_iter": 2000,
+                    "class_weight": None,
+                },
+            },
+            {
+                "candidate_id": "c2_bigram",
+                "tfidf": {
+                    "analyzer": "word",
+                    "ngram_range": [1, 2],
+                    "lowercase": True,
+                    "min_df": 1,
+                    "sublinear_tf": True,
+                    "norm": "l2",
+                },
+                "logreg": {
+                    "C": 1.0,
+                    "solver": "lbfgs",
+                    "max_iter": 2000,
+                    "class_weight": None,
+                },
+            },
+            {
+                "candidate_id": "c3_bigram_balanced",
+                "tfidf": {
+                    "analyzer": "word",
+                    "ngram_range": [1, 2],
+                    "lowercase": True,
+                    "min_df": 1,
+                    "sublinear_tf": True,
+                    "norm": "l2",
+                },
+                "logreg": {
+                    "C": 1.0,
+                    "solver": "lbfgs",
+                    "max_iter": 2000,
+                    "class_weight": "balanced",
+                },
+            },
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path

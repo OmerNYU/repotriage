@@ -14,6 +14,12 @@ from repotriage.audit.builder import (
     format_audit_summary,
 )
 from repotriage.audit.models import AUDIT_ID_PATTERN, AuditError
+from repotriage.baseline.builder import (
+    DEFAULT_BASELINES_ROOT,
+    format_baseline_summary,
+    train_baseline,
+)
+from repotriage.baseline.models import BaselineError
 from repotriage.dataset.builder import (
     DEFAULT_PROCESSED_ROOT,
     build_dataset,
@@ -216,6 +222,39 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MODEL_READY_ROOT,
         help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
     )
+
+    baseline_parser = subparsers.add_parser(
+        "train-baseline",
+        help="Train and evaluate a multilabel baseline from a model-ready dataset",
+    )
+    baseline_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    baseline_parser.add_argument(
+        "--model-dataset-id",
+        required=True,
+        help="Explicit model-ready dataset id",
+    )
+    baseline_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the baseline configuration JSON",
+    )
+    baseline_parser.add_argument(
+        "--model-ready-root",
+        type=Path,
+        default=DEFAULT_MODEL_READY_ROOT,
+        help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
+    )
+    baseline_parser.add_argument(
+        "--baselines-root",
+        type=Path,
+        default=DEFAULT_BASELINES_ROOT,
+        help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
+    )
     return parser
 
 
@@ -385,6 +424,37 @@ def run_build_model_dataset(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_train_baseline(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _MODEL_DATASET_ID_RE.fullmatch(args.model_dataset_id):
+        print(
+            f"Invalid model-dataset id {args.model_dataset_id!r}. Expected a model-dataset id "
+            "such as 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = train_baseline(
+            repository,
+            args.model_dataset_id,
+            args.config,
+            model_ready_root=args.model_ready_root,
+            baselines_root=args.baselines_root,
+        )
+    except (ModelDatasetError, BaselineError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_baseline_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -404,6 +474,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "build-model-dataset":
         return run_build_model_dataset(args)
+
+    if args.command == "train-baseline":
+        return run_train_baseline(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

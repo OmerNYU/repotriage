@@ -19,6 +19,16 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.4",
 ]
+ml = [
+    "numpy>=2.1,<3",
+    "scipy>=1.14,<2",
+    "scikit-learn>=1.5,<2",
+    "joblib>=1.4,<2",
+    # RepoTriage imports threadpoolctl directly for the numerical-backend fingerprint
+    # and controlled thread limits, so it is declared explicitly even though
+    # scikit-learn also depends on it transitively.
+    "threadpoolctl>=3",
+]
 
 [project.scripts]
 repotriage = "repotriage.cli:main"
@@ -31,6 +41,15 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "integration: tests that require canonical local data artifacts",
+]
+filterwarnings = [
+    # Third-party compatibility warning: joblib.numpy_pickle triggers NumPy 2.5's
+    # "Setting the shape on a NumPy array has been deprecated" DeprecationWarning while
+    # unpickling arrays. It originates in joblib (not RepoTriage code), does not affect
+    # round-trip correctness or artifact integrity, and is verified by the trusted
+    # model-consistency check. Scoped as narrowly as possible; remove this filter once
+    # the upstream joblib release stops setting ndarray.shape directly.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:joblib.numpy_pickle",
 ]
 
 [tool.ruff]
