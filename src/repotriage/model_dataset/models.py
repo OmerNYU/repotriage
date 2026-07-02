@@ -153,6 +153,10 @@ class ModelDatasetBuildError(ModelDatasetError):
     """Raised when staging or publication of a model-ready artifact fails."""
 
 
+class ModelDatasetReadError(ModelDatasetError):
+    """Raised when model-ready JSONL cannot be read or validated."""
+
+
 def compute_model_dataset_input_sha256(
     *,
     model_dataset_version: str,

@@ -7,8 +7,10 @@ RepoTriage is an ML-assisted GitHub issue-triage platform. This repository curre
 Install the project in editable mode with development dependencies:
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,ml]"
 ```
+
+The `ml` optional dependency group is required for baseline training (`scikit-learn`, `numpy`, `scipy`, `joblib`).
 
 ## Running tests and lint checks
 
@@ -469,6 +471,108 @@ Any change to record, label-map, or split-report schema versions or to support-v
 semantics requires bumping `MODEL_DATASET_VERSION` (and thus the model-dataset id). Output
 contract schema versions are listed in `OUTPUT_CONTRACT_VERSIONS` in
 `src/repotriage/model_dataset/models.py`.
+
+## Training a multilabel baseline
+
+Train the first transparent TF-IDF + per-label logistic regression baseline from a validated
+model-ready artifact:
+
+```bash
+repotriage train-baseline \
+  --repo pandas-dev/pandas \
+  --model-dataset-id 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7 \
+  --config configs/baselines/pandas-dev__pandas/tfidf-logreg-v1.json
+```
+
+Optional flags:
+
+- `--model-ready-root PATH` overrides the default model-ready root
+- `--baselines-root PATH` overrides the default baseline artifact root
+
+Baseline artifacts are written under:
+
+```text
+data/baselines/github/<owner>__<repo>/<baseline-run-id>/
+```
+
+Each artifact includes frozen configuration, validation candidate comparison, test metrics,
+validation/test prediction JSONL files, a feature summary, and a serialized model bundle
+(`model.joblib`). Generated baseline artifacts are git-ignored (do not commit
+`data/baselines/`).
+
+### Baseline protocol
+
+1. **Train only on train split** — the TF-IDF vectorizer and per-label logistic regressions
+   are fit on train `feature_text` and train targets only.
+2. **Validation selection** — a small predeclared candidate set is compared on validation
+   metrics; macro average precision is the primary selection metric. Test data is not loaded
+   until after the winner is frozen.
+3. **Frozen test evaluation** — the selected train-only model is evaluated on test once.
+
+The fixed decision threshold is `0.5` on `predict_proba` outputs. Stored scores are
+**probability estimates**, not calibrated confidence.
+
+### Baseline identity (bl4)
+
+Baseline run IDs use the form `<model-dataset-id>-bl4-<12-hex>` and bind three hashes:
+
+- `baseline_experiment_sha256` — model-dataset lineage, canonical config semantics, protocol
+  versions (including `model_semantic_contract_version`), threshold, and random seed (not raw
+  config file bytes).
+- `numerical_environment_sha256` — Python implementation/version, OS system, machine
+  architecture, numpy/scipy/scikit-learn/joblib/threadpoolctl versions, a canonical
+  numerical-backend fingerprint (exact BLAS/LAPACK/OpenMP backend versions, threading layer,
+  and backend architecture from `threadpoolctl.threadpool_info()`), and the controlled
+  `numerical_thread_limit`.
+- `baseline_run_sha256` — `sha256(experiment_hash + environment_hash)`.
+
+Numerical fitting and scoring run under `threadpoolctl.threadpool_limits(limits=1)` to remove
+machine-default BLAS thread-count nondeterminism. The numerical-backend fingerprint excludes
+volatile fields (absolute paths, install dirs, hostnames, PIDs, live thread counts), so it
+changes when a backend *version* changes but not when file paths differ.
+
+Cache hits require an exact environment fingerprint match. Identical experiments may produce
+different run IDs across library or numerical-backend versions. The bl4 contract supersedes
+bl1/bl2/bl3; older artifacts remain on disk as historical local artifacts and are never
+overwritten.
+
+### Model serialization contract (bl4)
+
+`model_semantic_sha256` is the authoritative identity for the learned model state. It covers
+inference-relevant fitted fields only: sorted vocabulary mapping, `idf_` array bytes, per-label
+estimator parameters, `classes_`, `coef_`, `intercept_`, and `n_iter_`. Volatile pickle
+metadata (for example scikit-learn's private `_stop_words_id`, which stores `id(stop_words)`)
+is excluded structurally.
+
+`model_sha256` remains a local file-integrity checksum for the serialized `model.joblib`
+bytes on disk. **Byte-identical model serialization is not guaranteed** across processes even
+when predictions, metrics, and `model_semantic_sha256` match. Same-run equivalence is based on
+the semantic fingerprint plus identical stored predictions and metrics.
+
+### Metric contract v2
+
+Macro precision/recall/F1 use **zero-filled** averaging over all labels (undefined per-label
+metrics count as `0.0`). Defined-only means are recorded separately as
+`macro_*_defined_only`. Per-label F1 is `0.0` when precision and recall are both defined
+and zero. `samples_f1` uses the `empty_empty -> 1.0` policy (`samples_f1_empty_empty_policy:
+"one"`).
+
+Validation predictions store **all candidates** (`candidate_id` on each row); test
+predictions store the frozen winner only.
+
+### Reproducibility and trust boundary
+
+`validate_baseline_artifact_integrity` and `validate_baseline_against_inputs` verify hashes,
+schemas, source alignment, and candidate-selection audit **without** unpickling
+`model.joblib`. `verify_baseline_model_consistency(trust_model_file=True)` is the only
+validator path that loads the serialized model and recomputes scores.
+
+Metrics and predictions are reproducible within the recorded numerical environment
+documented in each artifact manifest. They are **not** guaranteed byte-identical across
+operating systems, BLAS implementations, or library patch versions.
+
+`model.joblib` uses pickle-based serialization. **Do not load model files from untrusted
+sources.**
 
 ## Limitations: mutable raw history vs immutable processed history
 
