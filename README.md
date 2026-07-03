@@ -574,6 +574,25 @@ operating systems, BLAS implementations, or library patch versions.
 `model.joblib` uses pickle-based serialization. **Do not load model files from untrusted
 sources.**
 
+## Global threshold policy (tp1)
+
+Session 6 publishes one **global probability threshold** per frozen baseline artifact.
+The policy consumes stored validation and test score vectors from the baseline artifact
+(no model loading), sweeps an integer basis-point grid on validation only, and freezes
+the winning threshold before evaluating test metrics.
+
+```bash
+repotriage build-threshold-policy \
+  --repo pandas-dev/pandas \
+  --baseline-run-id 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602 \
+  --config configs/threshold_policies/pandas-dev__pandas/global-v1.json
+```
+
+Artifacts are written under `data/threshold_policies/github/<owner>__<repo>/<policy-id>/`
+with ids of the form `<baseline-run-id>-tp1-<12-hex>`. Selection uses validation macro F1,
+then micro F1, then proximity to the 0.50 reference threshold (in basis points), then
+higher threshold. Test metrics are informational only and never influence selection.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.
