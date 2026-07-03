@@ -400,3 +400,32 @@ def write_baseline_config(path: Path, *, repository: str = DEFAULT_TEST_REPOSITO
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def write_threshold_policy_config(
+    path: Path,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    baseline_run_id: str,
+    selected_candidate_id: str = "c3_bigram_balanced",
+) -> Path:
+    """Write a minimal threshold-policy configuration JSON file and return its path."""
+    payload = {
+        "config_schema_version": "1",
+        "threshold_policy_version": "1",
+        "repository": repository,
+        "baseline_run_id": baseline_run_id,
+        "selected_candidate_id": selected_candidate_id,
+        "metric_contract_version": "2",
+        "selection_rule_version": "1",
+        "reference_threshold_basis_points": 50,
+        "threshold_grid": {
+            "start_basis_points": 5,
+            "stop_basis_points": 95,
+            "step_basis_points": 1,
+            "denominator": 100,
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path

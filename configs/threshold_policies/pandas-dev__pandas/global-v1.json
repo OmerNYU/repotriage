@@ -1,0 +1,16 @@
+{
+  "config_schema_version": "1",
+  "threshold_policy_version": "1",
+  "repository": "pandas-dev/pandas",
+  "baseline_run_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602",
+  "selected_candidate_id": "c3_bigram_balanced",
+  "metric_contract_version": "2",
+  "selection_rule_version": "1",
+  "reference_threshold_basis_points": 50,
+  "threshold_grid": {
+    "start_basis_points": 5,
+    "stop_basis_points": 95,
+    "step_basis_points": 1,
+    "denominator": 100
+  }
+}

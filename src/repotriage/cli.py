@@ -19,7 +19,7 @@ from repotriage.baseline.builder import (
     format_baseline_summary,
     train_baseline,
 )
-from repotriage.baseline.models import BaselineError
+from repotriage.baseline.models import BASELINE_RUN_ID_PATTERN, BaselineError
 from repotriage.dataset.builder import (
     DEFAULT_PROCESSED_ROOT,
     build_dataset,
@@ -46,6 +46,12 @@ from repotriage.model_dataset.builder import (
     format_model_dataset_summary,
 )
 from repotriage.model_dataset.models import MODEL_DATASET_ID_PATTERN, ModelDatasetError
+from repotriage.threshold_policy.builder import (
+    DEFAULT_THRESHOLD_POLICIES_ROOT,
+    build_threshold_policy,
+    format_threshold_policy_summary,
+)
+from repotriage.threshold_policy.models import ThresholdPolicyError
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,7 @@ _DATASET_ID_RE = re.compile(DATASET_ID_PATTERN)
 _AUDIT_ID_RE = re.compile(AUDIT_ID_PATTERN)
 _POLICY_ID_RE = re.compile(POLICY_ID_PATTERN)
 _MODEL_DATASET_ID_RE = re.compile(MODEL_DATASET_ID_PATTERN)
+_BASELINE_RUN_ID_RE = re.compile(BASELINE_RUN_ID_PATTERN)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -255,6 +262,42 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_BASELINES_ROOT,
         help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
     )
+
+    threshold_policy_parser = subparsers.add_parser(
+        "build-threshold-policy",
+        help="Select and publish a global threshold policy from a frozen baseline artifact",
+    )
+    threshold_policy_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    threshold_policy_parser.add_argument(
+        "--baseline-run-id",
+        required=True,
+        help="Explicit baseline run id for the frozen baseline artifact",
+    )
+    threshold_policy_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the threshold-policy configuration JSON",
+    )
+    threshold_policy_parser.add_argument(
+        "--baselines-root",
+        type=Path,
+        default=DEFAULT_BASELINES_ROOT,
+        help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
+    )
+    threshold_policy_parser.add_argument(
+        "--threshold-policies-root",
+        type=Path,
+        default=DEFAULT_THRESHOLD_POLICIES_ROOT,
+        help=(
+            "Root directory for threshold-policy artifacts "
+            f"(default: {DEFAULT_THRESHOLD_POLICIES_ROOT})"
+        ),
+    )
     return parser
 
 
@@ -455,6 +498,52 @@ def run_train_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_threshold_policy(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _BASELINE_RUN_ID_RE.fullmatch(args.baseline_run_id):
+        print(
+            f"Invalid baseline run id {args.baseline_run_id!r}. Expected a baseline run id "
+            "such as 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602.",
+            file=sys.stderr,
+        )
+        return 2
+
+    from repotriage.threshold_policy.config import load_threshold_policy_config
+
+    try:
+        config, _, _, _ = load_threshold_policy_config(args.config)
+    except ThresholdPolicyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if config.baseline_run_id != args.baseline_run_id:
+        print(
+            f"Config baseline_run_id {config.baseline_run_id!r} does not match "
+            f"--baseline-run-id {args.baseline_run_id!r}.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = build_threshold_policy(
+            repository,
+            args.config,
+            baselines_root=args.baselines_root,
+            threshold_policies_root=args.threshold_policies_root,
+        )
+    except (BaselineError, ThresholdPolicyError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_threshold_policy_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -477,6 +566,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "train-baseline":
         return run_train_baseline(args)
+
+    if args.command == "build-threshold-policy":
+        return run_build_threshold_policy(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2
