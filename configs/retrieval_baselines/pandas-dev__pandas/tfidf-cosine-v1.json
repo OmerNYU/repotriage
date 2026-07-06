@@ -1,0 +1,18 @@
+{
+  "config_schema_version": "1",
+  "retrieval_baseline_version": "1",
+  "repository": "pandas-dev/pandas",
+  "retrieval_protocol_version": "train_corpus_v1",
+  "metric_contract_version": "1",
+  "similarity_metric": "cosine",
+  "relevance_definition": "label_overlap",
+  "top_k": 10,
+  "tfidf": {
+    "analyzer": "word",
+    "ngram_range": [1, 2],
+    "lowercase": true,
+    "min_df": 2,
+    "sublinear_tf": true,
+    "norm": "l2"
+  }
+}
