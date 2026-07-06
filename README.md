@@ -638,6 +638,52 @@ records are queries only. Test metrics are informational only.
 from untrusted sources.** Joblib bytes are not guaranteed deterministic across environments;
 `index_semantic_sha256` in each manifest is the authoritative fitted-state identity.
 
+## Local issue inference (Session 9)
+
+Session 9 adds a **local inference pathway** that scores a new issue-like input (title and
+body) and returns one combined JSON response with label scores, thresholded predictions,
+abstention decision, similar historical train-corpus issues, artifact IDs, and
+reproducibility metadata.
+
+The inference bundle is **config-only**: `configs/inference/<owner>__<repo>/local-v1.json`
+binds the four canonical artifacts (baseline classifier, threshold policy, abstention
+policy, retrieval baseline). No separate inference artifact is published under `data/`.
+
+Feature text uses the same v1 contract as the model-ready dataset (`[TITLE]` / `[BODY]`
+markers with CRLF/CR normalization only). Inference imports
+`build_feature_text_v1` from the model-ready builder path — do not format title/body
+differently at inference time.
+
+```bash
+repotriage infer-issue \
+  --repo pandas-dev/pandas \
+  --config configs/inference/pandas-dev__pandas/local-v1.json \
+  --title "BUG: loc indexing returns unexpected result" \
+  --body "When using .loc with a list indexer, result dtype is wrong." \
+  --top-k 5 \
+  --pretty
+```
+
+The response includes:
+
+- `classification`: per-label scores in canonical label order, threshold `0.39`, and
+  predicted labels;
+- `abstention`: issue confidence (`max_predicted_label_score` among predicted labels) vs
+  abstention threshold `0.84`; issues with no predicted labels are forced to abstain;
+- `retrieval`: top-k similar train-corpus issues with `predicted_label_overlap` (overlap
+  between **predicted** labels and each neighbor's historical selected labels — not
+  true-label overlap);
+- `artifacts` and `reproducibility`: lineage IDs and semantic fingerprints.
+
+`model.joblib` and `vectorizer.joblib` use pickle-based serialization via joblib.
+**Load only trusted local artifacts** (`trust_serialized_models: true` in the inference
+config). Integrity checks run before unpickling; semantic fingerprints are verified after
+load.
+
+Prerequisites: Sessions 5–8 artifacts for the bound repository must exist locally under
+`data/baselines/`, `data/threshold_policies/`, `data/abstention_policies/`, and
+`data/retrieval_baselines/`, plus the model-ready dataset under `data/model_ready/`.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.

@@ -40,6 +40,11 @@ from repotriage.github.models import (
     InvalidRepositoryError,
     parse_repository,
 )
+from repotriage.inference.artifact_loader import load_inference_bundle
+from repotriage.inference.config import load_inference_config
+from repotriage.inference.models import InferenceError, InferenceIssueInput
+from repotriage.inference.pipeline import infer_issue
+from repotriage.inference.report import format_inference_response_json
 from repotriage.label_policy.builder import (
     DEFAULT_POLICIES_ROOT,
     build_label_policy,
@@ -394,6 +399,82 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_RETRIEVAL_BASELINES_ROOT})"
         ),
     )
+
+    infer_parser = subparsers.add_parser(
+        "infer-issue",
+        help="Score a new issue using the local inference bundle",
+    )
+    infer_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    infer_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the inference bundle configuration JSON",
+    )
+    infer_parser.add_argument(
+        "--title",
+        required=True,
+        help="Issue title text",
+    )
+    infer_parser.add_argument(
+        "--body",
+        default="",
+        help="Issue body text (default: empty string)",
+    )
+    infer_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=None,
+        help="Override retrieval top-k (default: config default_top_k)",
+    )
+    infer_parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print JSON output",
+    )
+    infer_parser.add_argument(
+        "--baselines-root",
+        type=Path,
+        default=DEFAULT_BASELINES_ROOT,
+        help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
+    )
+    infer_parser.add_argument(
+        "--threshold-policies-root",
+        type=Path,
+        default=DEFAULT_THRESHOLD_POLICIES_ROOT,
+        help=(
+            "Root directory for threshold-policy artifacts "
+            f"(default: {DEFAULT_THRESHOLD_POLICIES_ROOT})"
+        ),
+    )
+    infer_parser.add_argument(
+        "--abstention-policies-root",
+        type=Path,
+        default=DEFAULT_ABSTENTION_POLICIES_ROOT,
+        help=(
+            "Root directory for abstention-policy artifacts "
+            f"(default: {DEFAULT_ABSTENTION_POLICIES_ROOT})"
+        ),
+    )
+    infer_parser.add_argument(
+        "--retrieval-baselines-root",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_BASELINES_ROOT,
+        help=(
+            "Root directory for retrieval-baseline artifacts "
+            f"(default: {DEFAULT_RETRIEVAL_BASELINES_ROOT})"
+        ),
+    )
+    infer_parser.add_argument(
+        "--model-ready-root",
+        type=Path,
+        default=DEFAULT_MODEL_READY_ROOT,
+        help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
+    )
     return parser
 
 
@@ -736,6 +817,55 @@ def run_build_retrieval_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_infer_issue(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.top_k is not None and args.top_k < 1:
+        print("--top-k must be a positive integer.", file=sys.stderr)
+        return 2
+
+    try:
+        config = load_inference_config(args.config)
+    except InferenceError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if config.repository != repository.full_name:
+        print(
+            f"Config repository {config.repository!r} does not match --repo "
+            f"{repository.full_name!r}.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        bundle = load_inference_bundle(
+            args.config,
+            repository=repository,
+            baselines_root=args.baselines_root,
+            threshold_policies_root=args.threshold_policies_root,
+            abstention_policies_root=args.abstention_policies_root,
+            retrieval_baselines_root=args.retrieval_baselines_root,
+            model_ready_root=args.model_ready_root,
+        )
+        issue_input = InferenceIssueInput(
+            title=args.title,
+            body=args.body,
+            top_k=args.top_k,
+        )
+        response = infer_issue(bundle, issue_input)
+    except InferenceError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_inference_response_json(response, pretty=args.pretty), end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -767,6 +897,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "build-retrieval-baseline":
         return run_build_retrieval_baseline(args)
+
+    if args.command == "infer-issue":
+        return run_infer_issue(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

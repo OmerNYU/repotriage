@@ -489,3 +489,33 @@ def write_retrieval_baseline_config(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def write_inference_config(
+    path: Path,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    model_dataset_id: str,
+    baseline_run_id: str,
+    threshold_policy_id: str,
+    abstention_policy_id: str,
+    retrieval_run_id: str,
+    default_top_k: int = 5,
+) -> Path:
+    """Write a minimal inference bundle configuration JSON file and return its path."""
+    payload = {
+        "config_schema_version": "1",
+        "inference_bundle_version": "1",
+        "repository": repository,
+        "model_dataset_id": model_dataset_id,
+        "text_representation_version": "1",
+        "baseline_run_id": baseline_run_id,
+        "threshold_policy_id": threshold_policy_id,
+        "abstention_policy_id": abstention_policy_id,
+        "retrieval_run_id": retrieval_run_id,
+        "default_top_k": default_top_k,
+        "trust_serialized_models": True,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
