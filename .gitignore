@@ -29,6 +29,7 @@ data/policies/
 data/model_ready/
 data/baselines/
 data/threshold_policies/
+data/abstention_policies/
 artifacts/
 
 # Operating-system files
