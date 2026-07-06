@@ -429,3 +429,32 @@ def write_threshold_policy_config(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def write_abstention_policy_config(
+    path: Path,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    threshold_policy_id: str,
+    minimum_coverage: float = 0.25,
+) -> Path:
+    """Write a minimal abstention-policy configuration JSON file and return its path."""
+    payload = {
+        "config_schema_version": "1",
+        "abstention_policy_version": "1",
+        "repository": repository,
+        "threshold_policy_id": threshold_policy_id,
+        "confidence_definition": "max_predicted_label_score",
+        "metric_contract_version": "2",
+        "selection_rule_version": "1",
+        "minimum_coverage": minimum_coverage,
+        "abstention_grid": {
+            "start_basis_points_override": None,
+            "stop_basis_points": 95,
+            "step_basis_points": 1,
+            "denominator": 100,
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path

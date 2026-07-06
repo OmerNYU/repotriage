@@ -1,0 +1,16 @@
+{
+  "config_schema_version": "1",
+  "abstention_policy_version": "1",
+  "repository": "pandas-dev/pandas",
+  "threshold_policy_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602-tp1-ccaab0996458",
+  "confidence_definition": "max_predicted_label_score",
+  "metric_contract_version": "2",
+  "selection_rule_version": "1",
+  "minimum_coverage": 0.25,
+  "abstention_grid": {
+    "start_basis_points_override": null,
+    "stop_basis_points": 95,
+    "step_basis_points": 1,
+    "denominator": 100
+  }
+}

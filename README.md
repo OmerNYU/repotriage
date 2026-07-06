@@ -593,6 +593,27 @@ with ids of the form `<baseline-run-id>-tp1-<12-hex>`. Selection uses validation
 then micro F1, then proximity to the 0.50 reference threshold (in basis points), then
 higher threshold. Test metrics are informational only and never influence selection.
 
+## Abstention policy (ap1)
+
+Session 7 publishes one **issue-level abstention threshold** per frozen threshold-policy
+artifact. The policy consumes baseline score vectors and the Session 6 classification
+threshold (no model loading), sweeps an integer basis-point abstention grid on validation
+only, and freezes the winning abstention threshold before evaluating test metrics and
+confidence-bin diagnostics.
+
+```bash
+repotriage build-abstention-policy \
+  --repo pandas-dev/pandas \
+  --threshold-policy-id 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602-tp1-ccaab0996458 \
+  --config configs/abstention_policies/pandas-dev__pandas/issue-confidence-v1.json
+```
+
+Artifacts are written under `data/abstention_policies/github/<owner>__<repo>/<policy-id>/`
+with ids of the form `<threshold-policy-id>-ap1-<12-hex>`. Issue confidence is the maximum
+score among predicted labels at the classification threshold. Selection requires validation
+coverage >= 0.25, then ranks by handled subset accuracy, handled samples F1, coverage, and
+lower abstention threshold. Test metrics and confidence bins are informational only.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.

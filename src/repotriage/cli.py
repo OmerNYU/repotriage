@@ -8,6 +8,12 @@ import re
 import sys
 from pathlib import Path
 
+from repotriage.abstention_policy.builder import (
+    DEFAULT_ABSTENTION_POLICIES_ROOT,
+    build_abstention_policy,
+    format_abstention_policy_summary,
+)
+from repotriage.abstention_policy.models import AbstentionPolicyError
 from repotriage.audit.builder import (
     DEFAULT_AUDITS_ROOT,
     audit_dataset,
@@ -51,6 +57,7 @@ from repotriage.threshold_policy.builder import (
     build_threshold_policy,
     format_threshold_policy_summary,
 )
+from repotriage.threshold_policy.models import POLICY_ID_PATTERN as THRESHOLD_POLICY_ID_PATTERN
 from repotriage.threshold_policy.models import ThresholdPolicyError
 
 logger = logging.getLogger(__name__)
@@ -58,6 +65,7 @@ logger = logging.getLogger(__name__)
 _DATASET_ID_RE = re.compile(DATASET_ID_PATTERN)
 _AUDIT_ID_RE = re.compile(AUDIT_ID_PATTERN)
 _POLICY_ID_RE = re.compile(POLICY_ID_PATTERN)
+_THRESHOLD_POLICY_ID_RE = re.compile(THRESHOLD_POLICY_ID_PATTERN)
 _MODEL_DATASET_ID_RE = re.compile(MODEL_DATASET_ID_PATTERN)
 _BASELINE_RUN_ID_RE = re.compile(BASELINE_RUN_ID_PATTERN)
 
@@ -296,6 +304,51 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory for threshold-policy artifacts "
             f"(default: {DEFAULT_THRESHOLD_POLICIES_ROOT})"
+        ),
+    )
+
+    abstention_policy_parser = subparsers.add_parser(
+        "build-abstention-policy",
+        help="Select and publish an abstention policy from a frozen threshold-policy artifact",
+    )
+    abstention_policy_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    abstention_policy_parser.add_argument(
+        "--threshold-policy-id",
+        required=True,
+        help="Explicit threshold-policy id for the frozen threshold-policy artifact",
+    )
+    abstention_policy_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the abstention-policy configuration JSON",
+    )
+    abstention_policy_parser.add_argument(
+        "--baselines-root",
+        type=Path,
+        default=DEFAULT_BASELINES_ROOT,
+        help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
+    )
+    abstention_policy_parser.add_argument(
+        "--threshold-policies-root",
+        type=Path,
+        default=DEFAULT_THRESHOLD_POLICIES_ROOT,
+        help=(
+            "Root directory for threshold-policy artifacts "
+            f"(default: {DEFAULT_THRESHOLD_POLICIES_ROOT})"
+        ),
+    )
+    abstention_policy_parser.add_argument(
+        "--abstention-policies-root",
+        type=Path,
+        default=DEFAULT_ABSTENTION_POLICIES_ROOT,
+        help=(
+            "Root directory for abstention-policy artifacts "
+            f"(default: {DEFAULT_ABSTENTION_POLICIES_ROOT})"
         ),
     )
     return parser
@@ -544,6 +597,55 @@ def run_build_threshold_policy(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_abstention_policy(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _THRESHOLD_POLICY_ID_RE.fullmatch(args.threshold_policy_id):
+        print(
+            f"Invalid threshold-policy id {args.threshold_policy_id!r}. Expected a threshold "
+            "policy id such as "
+            "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602-tp1-ccaab0996458.",
+            file=sys.stderr,
+        )
+        return 2
+
+    from repotriage.abstention_policy.config import load_abstention_policy_config
+
+    try:
+        config, _, _, _ = load_abstention_policy_config(args.config)
+    except AbstentionPolicyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if config.threshold_policy_id != args.threshold_policy_id:
+        print(
+            f"Config threshold_policy_id {config.threshold_policy_id!r} does not match "
+            f"--threshold-policy-id {args.threshold_policy_id!r}.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = build_abstention_policy(
+            repository,
+            args.config,
+            threshold_policy_id=args.threshold_policy_id,
+            baselines_root=args.baselines_root,
+            threshold_policies_root=args.threshold_policies_root,
+            abstention_policies_root=args.abstention_policies_root,
+        )
+    except (BaselineError, ThresholdPolicyError, AbstentionPolicyError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_abstention_policy_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -569,6 +671,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "build-threshold-policy":
         return run_build_threshold_policy(args)
+
+    if args.command == "build-abstention-policy":
+        return run_build_abstention_policy(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2
