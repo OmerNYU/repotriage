@@ -458,3 +458,34 @@ def write_abstention_policy_config(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def write_retrieval_baseline_config(
+    path: Path,
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    top_k: int = 10,
+    min_df: int = 1,
+) -> Path:
+    """Write a minimal retrieval-baseline configuration JSON file and return its path."""
+    payload = {
+        "config_schema_version": "1",
+        "retrieval_baseline_version": "1",
+        "repository": repository,
+        "retrieval_protocol_version": "train_corpus_v1",
+        "metric_contract_version": "1",
+        "similarity_metric": "cosine",
+        "relevance_definition": "label_overlap",
+        "top_k": top_k,
+        "tfidf": {
+            "analyzer": "word",
+            "ngram_range": [1, 2],
+            "lowercase": True,
+            "min_df": min_df,
+            "sublinear_tf": True,
+            "norm": "l2",
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path

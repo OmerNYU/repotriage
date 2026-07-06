@@ -52,6 +52,12 @@ from repotriage.model_dataset.builder import (
     format_model_dataset_summary,
 )
 from repotriage.model_dataset.models import MODEL_DATASET_ID_PATTERN, ModelDatasetError
+from repotriage.retrieval.builder import (
+    DEFAULT_RETRIEVAL_BASELINES_ROOT,
+    build_retrieval_baseline,
+    format_retrieval_summary,
+)
+from repotriage.retrieval.models import RETRIEVAL_RUN_ID_PATTERN, RetrievalError
 from repotriage.threshold_policy.builder import (
     DEFAULT_THRESHOLD_POLICIES_ROOT,
     build_threshold_policy,
@@ -68,6 +74,7 @@ _POLICY_ID_RE = re.compile(POLICY_ID_PATTERN)
 _THRESHOLD_POLICY_ID_RE = re.compile(THRESHOLD_POLICY_ID_PATTERN)
 _MODEL_DATASET_ID_RE = re.compile(MODEL_DATASET_ID_PATTERN)
 _BASELINE_RUN_ID_RE = re.compile(BASELINE_RUN_ID_PATTERN)
+_RETRIEVAL_RUN_ID_RE = re.compile(RETRIEVAL_RUN_ID_PATTERN)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -349,6 +356,42 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory for abstention-policy artifacts "
             f"(default: {DEFAULT_ABSTENTION_POLICIES_ROOT})"
+        ),
+    )
+
+    retrieval_parser = subparsers.add_parser(
+        "build-retrieval-baseline",
+        help="Build and publish a TF-IDF cosine-similarity retrieval baseline",
+    )
+    retrieval_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/name form, for example pandas-dev/pandas",
+    )
+    retrieval_parser.add_argument(
+        "--model-dataset-id",
+        required=True,
+        help="Explicit model-ready dataset id",
+    )
+    retrieval_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the retrieval-baseline configuration JSON",
+    )
+    retrieval_parser.add_argument(
+        "--model-ready-root",
+        type=Path,
+        default=DEFAULT_MODEL_READY_ROOT,
+        help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
+    )
+    retrieval_parser.add_argument(
+        "--retrieval-baselines-root",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_BASELINES_ROOT,
+        help=(
+            "Root directory for retrieval-baseline artifacts "
+            f"(default: {DEFAULT_RETRIEVAL_BASELINES_ROOT})"
         ),
     )
     return parser
@@ -646,6 +689,53 @@ def run_build_abstention_policy(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_retrieval_baseline(args: argparse.Namespace) -> int:
+    try:
+        repository = parse_repository(args.repo)
+    except InvalidRepositoryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not _MODEL_DATASET_ID_RE.fullmatch(args.model_dataset_id):
+        print(
+            f"Invalid model-dataset id {args.model_dataset_id!r}. Expected a model-dataset id "
+            "such as 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7.",
+            file=sys.stderr,
+        )
+        return 2
+
+    from repotriage.retrieval.config import load_retrieval_config
+
+    try:
+        config, _, _, _ = load_retrieval_config(args.config)
+    except RetrievalError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if config.repository != repository.full_name:
+        print(
+            f"Config repository {config.repository!r} does not match --repo "
+            f"{repository.full_name!r}.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        result = build_retrieval_baseline(
+            repository,
+            args.model_dataset_id,
+            args.config,
+            model_ready_root=args.model_ready_root,
+            retrieval_baselines_root=args.retrieval_baselines_root,
+        )
+    except (ModelDatasetError, RetrievalError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(format_retrieval_summary(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -674,6 +764,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "build-abstention-policy":
         return run_build_abstention_policy(args)
+
+    if args.command == "build-retrieval-baseline":
+        return run_build_retrieval_baseline(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

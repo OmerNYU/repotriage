@@ -614,6 +614,30 @@ score among predicted labels at the classification threshold. Selection requires
 coverage >= 0.25, then ranks by handled subset accuracy, handled samples F1, coverage, and
 lower abstention threshold. Test metrics and confidence bins are informational only.
 
+## Similar-issue retrieval baseline (rb1)
+
+Session 8 publishes one **TF-IDF cosine-similarity retrieval baseline** per model-ready
+dataset. The artifact indexes train-split issues only, retrieves nearest neighbors for
+validation and test queries, and evaluates label-overlap retrieval metrics.
+
+```bash
+repotriage build-retrieval-baseline \
+  --repo pandas-dev/pandas \
+  --model-dataset-id 20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7 \
+  --config configs/retrieval_baselines/pandas-dev__pandas/tfidf-cosine-v1.json
+```
+
+Artifacts are written under
+`data/retrieval_baselines/github/<owner>__<repo>/<retrieval-run-id>/` with ids of the form
+`<model-dataset-id>-rb1-<12-hex>`. Retrieved issues are **similar historical issues**
+and nearest neighbors under the selected TF-IDF representation — not guaranteed duplicates and not evidence of
+semantic understanding. The vectorizer is fit on train records only; validation and test
+records are queries only. Test metrics are informational only.
+
+`vectorizer.joblib` uses pickle-based serialization. **Do not load serialized index files
+from untrusted sources.** Joblib bytes are not guaranteed deterministic across environments;
+`index_semantic_sha256` in each manifest is the authoritative fitted-state identity.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.
