@@ -1,0 +1,39 @@
+.git/
+.github/
+.venv/
+.env
+.env.*
+!.env.example
+
+# Python / test caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build outputs
+build/
+dist/
+
+# Generated data — mounted at runtime, never baked
+data/
+
+# Local DB files
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker files (not needed in build context)
+docker-compose*.yml
+Dockerfile
+scripts/docker-smoke.sh
