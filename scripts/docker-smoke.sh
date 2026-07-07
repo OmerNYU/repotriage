@@ -7,12 +7,16 @@ cd "$ROOT"
 
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 BASE_URL="http://127.0.0.1:${BACKEND_PORT}"
+INFERENCE_CONFIG="${REPOTRIAGE_INFERENCE_CONFIG:-configs/inference/pandas-dev__pandas/local-v1.json}"
 
 MODEL_DATASET_ID="20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7"
 BASELINE_RUN_ID="${MODEL_DATASET_ID}-bl4-46227a0ec602"
 THRESHOLD_POLICY_ID="${BASELINE_RUN_ID}-tp1-ccaab0996458"
 ABSTENTION_POLICY_ID="${THRESHOLD_POLICY_ID}-ap1-9c3c140e7ccb"
 RETRIEVAL_RUN_ID="${MODEL_DATASET_ID}-rb1-deb29b6da4eb"
+
+echo "==> Checking inference artifact readiness"
+repotriage check-artifacts --strict --config "$INFERENCE_CONFIG"
 
 echo "==> Building and starting Docker Compose stack"
 docker compose up -d --build --wait

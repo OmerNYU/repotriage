@@ -46,6 +46,14 @@ from repotriage.inference.artifact_loader import load_inference_bundle
 from repotriage.inference.config import load_inference_config
 from repotriage.inference.models import InferenceError, InferenceIssueInput
 from repotriage.inference.pipeline import infer_issue
+from repotriage.inference.readiness import (
+    ArtifactRoots,
+    InferenceConfigError,
+    ReadinessMode,
+    check_inference_artifacts,
+    format_readiness_report,
+    format_readiness_report_json,
+)
 from repotriage.inference.report import format_inference_response_json
 from repotriage.label_policy.builder import (
     DEFAULT_POLICIES_ROOT,
@@ -548,6 +556,71 @@ def build_parser() -> argparse.ArgumentParser:
             "default: sqlite:///./data/repotriage_feedback.db)"
         ),
     )
+
+    check_artifacts_parser = subparsers.add_parser(
+        "check-artifacts",
+        help="Verify inference artifact readiness for a bundle config",
+    )
+    check_artifacts_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the inference bundle configuration JSON",
+    )
+    check_artifacts_parser.add_argument(
+        "--integrity",
+        action="store_true",
+        help="Verify manifest identity and SHA256 file hashes (no model loading)",
+    )
+    check_artifacts_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Full bundle load including joblib and cross-artifact compatibility",
+    )
+    check_artifacts_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON instead of a human-readable report",
+    )
+    check_artifacts_parser.add_argument(
+        "--baselines-root",
+        type=Path,
+        default=DEFAULT_BASELINES_ROOT,
+        help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
+    )
+    check_artifacts_parser.add_argument(
+        "--threshold-policies-root",
+        type=Path,
+        default=DEFAULT_THRESHOLD_POLICIES_ROOT,
+        help=(
+            "Root directory for threshold-policy artifacts "
+            f"(default: {DEFAULT_THRESHOLD_POLICIES_ROOT})"
+        ),
+    )
+    check_artifacts_parser.add_argument(
+        "--abstention-policies-root",
+        type=Path,
+        default=DEFAULT_ABSTENTION_POLICIES_ROOT,
+        help=(
+            "Root directory for abstention-policy artifacts "
+            f"(default: {DEFAULT_ABSTENTION_POLICIES_ROOT})"
+        ),
+    )
+    check_artifacts_parser.add_argument(
+        "--retrieval-baselines-root",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_BASELINES_ROOT,
+        help=(
+            "Root directory for retrieval-baseline artifacts "
+            f"(default: {DEFAULT_RETRIEVAL_BASELINES_ROOT})"
+        ),
+    )
+    check_artifacts_parser.add_argument(
+        "--model-ready-root",
+        type=Path,
+        default=DEFAULT_MODEL_READY_ROOT,
+        help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
+    )
     return parser
 
 
@@ -939,6 +1012,36 @@ def run_infer_issue(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_check_artifacts(args: argparse.Namespace) -> int:
+    if args.strict:
+        mode = ReadinessMode.STRICT
+    elif args.integrity:
+        mode = ReadinessMode.INTEGRITY
+    else:
+        mode = ReadinessMode.PRESENCE
+
+    roots = ArtifactRoots(
+        model_ready_root=args.model_ready_root,
+        baselines_root=args.baselines_root,
+        threshold_policies_root=args.threshold_policies_root,
+        abstention_policies_root=args.abstention_policies_root,
+        retrieval_baselines_root=args.retrieval_baselines_root,
+    )
+
+    try:
+        report = check_inference_artifacts(args.config, mode=mode, roots=roots)
+    except InferenceConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(format_readiness_report_json(report), end="")
+    else:
+        print(format_readiness_report(report), end="")
+
+    return 0 if report.ready else 1
+
+
 def run_serve(args: argparse.Namespace) -> int:
     if args.port < 1 or args.port > 65535:
         print("--port must be between 1 and 65535.", file=sys.stderr)
@@ -997,6 +1100,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "infer-issue":
         return run_infer_issue(args)
+
+    if args.command == "check-artifacts":
+        return run_check_artifacts(args)
 
     if args.command == "serve":
         return run_serve(args)

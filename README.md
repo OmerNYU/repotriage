@@ -12,6 +12,29 @@ python -m pip install -e ".[dev,ml]"
 
 The `ml` optional dependency group is required for baseline training (`scikit-learn`, `numpy`, `scipy`, `joblib`).
 
+## Quick demo (local)
+
+RepoTriage ships a local maintainer demo for `pandas-dev/pandas`: score an issue, inspect
+predictions and similar issues, and submit feedback. **ML inference artifacts are not in git**
+(~13 MB for the canonical set). A fresh clone must copy or build artifacts first.
+
+```bash
+python -m pip install -e ".[dev,ml,db]"
+
+repotriage check-artifacts \
+  --config configs/inference/pandas-dev__pandas/local-v1.json
+
+cp .env.example .env
+docker compose up --build
+```
+
+- Backend API: `http://localhost:8000`
+- Maintainer UI: `http://localhost:5173` (Compose frontend or `cd frontend && npm run dev`)
+- Smoke test: `./scripts/docker-smoke.sh`
+
+If `check-artifacts` reports missing artifacts, see [`docs/demo.md`](docs/demo.md) for copy vs.
+generate instructions. Use `--integrity` after copying artifacts; use `--strict` before a demo.
+
 ## Running tests and lint checks
 
 ```bash
@@ -954,8 +977,16 @@ artifacts for `pandas-dev/pandas` must exist on the host under:
 - `data/abstention_policies/github/`
 - `data/retrieval_baselines/github/`
 
-See Sessions 5–8 above for how to generate these directories. A fresh `git clone` alone is
-not sufficient — copy artifacts from another machine or run the local build pipeline first.
+Check readiness:
+
+```bash
+repotriage check-artifacts \
+  --config configs/inference/pandas-dev__pandas/local-v1.json
+```
+
+See [`docs/demo.md`](docs/demo.md) and Sessions 5–8 below for how to generate these
+directories. A fresh `git clone` alone is not sufficient — copy artifacts from another
+machine or run the local build pipeline first.
 
 Create host directories if needed:
 
@@ -1049,11 +1080,13 @@ docker compose exec postgres \
 ### Smoke test
 
 ```bash
+./scripts/check-demo-ready.sh   # artifact preflight only
 ./scripts/docker-smoke.sh
 ```
 
-This script builds and starts the stack, calls `/health`, `/api/v1/infer`, and
-`/api/v1/feedback`, then verifies at least one row exists in `feedback_events`.
+`docker-smoke.sh` runs `check-artifacts --strict` before starting Compose, then calls
+`/health`, `/api/v1/infer`, and `/api/v1/feedback`, and verifies at least one row exists in
+`feedback_events`.
 
 ### Stopping and resetting
 
@@ -1091,7 +1124,15 @@ GitHub import, or feedback history view.
 
 ### Prerequisites
 
-The backend must be running with inference artifacts available (see Sessions 10–12). Either:
+The backend must be running with inference artifacts available (see Sessions 10–12). Verify
+artifacts first:
+
+```bash
+repotriage check-artifacts \
+  --config configs/inference/pandas-dev__pandas/local-v1.json
+```
+
+Then start the backend with either:
 
 ```bash
 # Option A: local serve (SQLite feedback default)
