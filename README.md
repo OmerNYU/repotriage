@@ -684,6 +684,97 @@ Prerequisites: Sessions 5–8 artifacts for the bound repository must exist loca
 `data/baselines/`, `data/threshold_policies/`, `data/abstention_policies/`, and
 `data/retrieval_baselines/`, plus the model-ready dataset under `data/model_ready/`.
 
+## FastAPI inference backend (Session 10)
+
+Session 10 adds a thin FastAPI HTTP wrapper over the Session 9 local inference pathway.
+This is a **local/dev backend contract**, not a production-hardened deployment. The server
+loads one inference bundle at startup and exposes two endpoints:
+
+- `GET /health` — liveness plus loaded repository and config path;
+- `POST /api/v1/infer` — score a new issue title/body and return the same JSON response
+  shape as `repotriage infer-issue`.
+
+Install dependencies (inference still requires the `[ml]` extra):
+
+```bash
+pip install -e ".[ml,dev]"
+```
+
+Start the server with the canonical pandas inference config:
+
+```bash
+repotriage serve \
+  --config configs/inference/pandas-dev__pandas/local-v1.json \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+Alternative startup via uvicorn factory (requires `REPOTRIAGE_INFERENCE_CONFIG`):
+
+```bash
+export REPOTRIAGE_INFERENCE_CONFIG=configs/inference/pandas-dev__pandas/local-v1.json
+uvicorn repotriage.api.app:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+Health check:
+
+```bash
+curl -sS http://127.0.0.1:8000/health | python -m json.tool
+```
+
+Infer request:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/v1/infer \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "BUG: loc indexing returns unexpected result",
+    "body": "When using .loc with a list indexer, result dtype is wrong.",
+    "top_k": 5
+  }' | python -m json.tool
+```
+
+Validation error (missing `title`):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/v1/infer \
+  -H 'Content-Type: application/json' \
+  -d '{"body": "no title"}' -w '\nHTTP %{http_code}\n'
+```
+
+The POST body accepts the same fields as `InferenceIssueInput`: `title` (required),
+`body` (optional, default empty string), `top_k` (optional), and optional
+`issue_number` / `issue_id` for forward compatibility. Repository and artifact binding
+come from the server config, not the request body.
+
+OpenAPI documentation is available at `/docs` when the server is running.
+
+Prerequisites are identical to Session 9: Sessions 5–8 artifacts for the bound
+repository must exist locally.
+
+### Session 10 limitations
+
+- **Single-repo only** — one inference config per server process; no repo selector in the
+  API.
+- **No authentication** — any client with network access can call the inference endpoint.
+- **No rate limiting** beyond server defaults.
+- **No request-size hardening** beyond framework defaults.
+- **Synchronous CPU-bound inference** — concurrent requests share one process.
+- **In-memory bundle** — model, retrieval index, and corpus matrix stay loaded for the
+  process lifetime.
+- **Pickle/joblib security** — same trust model as Session 9; load only trusted local
+  artifacts.
+- **No hot reload** — config or artifact changes require a server restart.
+- **No feedback persistence, PostgreSQL, GitHub write-back, Docker, or deployment** in this
+  milestone.
+- **`generated_at` timestamps** differ between separate CLI and API calls for the same
+  input.
+- **`issue_number` / `issue_id`** are accepted in the request body but are not reflected
+  in the response today.
+- **Retrieval results** are similar historical train-corpus issues and nearest neighbors
+  under the TF-IDF representation — not guaranteed duplicates and not evidence of semantic
+  understanding.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.

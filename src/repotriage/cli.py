@@ -14,6 +14,8 @@ from repotriage.abstention_policy.builder import (
     format_abstention_policy_summary,
 )
 from repotriage.abstention_policy.models import AbstentionPolicyError
+from repotriage.api.app import create_app
+from repotriage.api.settings import ApiSettings
 from repotriage.audit.builder import (
     DEFAULT_AUDITS_ROOT,
     audit_dataset,
@@ -475,6 +477,67 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MODEL_READY_ROOT,
         help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
     )
+
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Start the FastAPI inference backend",
+    )
+    serve_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Path to the inference bundle configuration JSON",
+    )
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind host for the HTTP server (default: 127.0.0.1)",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Bind port for the HTTP server (default: 8000)",
+    )
+    serve_parser.add_argument(
+        "--baselines-root",
+        type=Path,
+        default=DEFAULT_BASELINES_ROOT,
+        help=f"Root directory for baseline artifacts (default: {DEFAULT_BASELINES_ROOT})",
+    )
+    serve_parser.add_argument(
+        "--threshold-policies-root",
+        type=Path,
+        default=DEFAULT_THRESHOLD_POLICIES_ROOT,
+        help=(
+            "Root directory for threshold-policy artifacts "
+            f"(default: {DEFAULT_THRESHOLD_POLICIES_ROOT})"
+        ),
+    )
+    serve_parser.add_argument(
+        "--abstention-policies-root",
+        type=Path,
+        default=DEFAULT_ABSTENTION_POLICIES_ROOT,
+        help=(
+            "Root directory for abstention-policy artifacts "
+            f"(default: {DEFAULT_ABSTENTION_POLICIES_ROOT})"
+        ),
+    )
+    serve_parser.add_argument(
+        "--retrieval-baselines-root",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_BASELINES_ROOT,
+        help=(
+            "Root directory for retrieval-baseline artifacts "
+            f"(default: {DEFAULT_RETRIEVAL_BASELINES_ROOT})"
+        ),
+    )
+    serve_parser.add_argument(
+        "--model-ready-root",
+        type=Path,
+        default=DEFAULT_MODEL_READY_ROOT,
+        help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
+    )
     return parser
 
 
@@ -866,6 +929,30 @@ def run_infer_issue(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_serve(args: argparse.Namespace) -> int:
+    if args.port < 1 or args.port > 65535:
+        print("--port must be between 1 and 65535.", file=sys.stderr)
+        return 2
+
+    try:
+        load_inference_config(args.config)
+    except InferenceError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    settings = ApiSettings.from_namespace(args)
+
+    import uvicorn
+
+    uvicorn.run(
+        lambda: create_app(settings=settings),
+        host=args.host,
+        port=args.port,
+        factory=True,
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
@@ -900,6 +987,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "infer-issue":
         return run_infer_issue(args)
+
+    if args.command == "serve":
+        return run_serve(args)
 
     parser.error(f"Unknown command: {args.command}")
     return 2
