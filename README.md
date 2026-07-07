@@ -1080,6 +1080,121 @@ Docker Compose is optional. Outside Docker, `repotriage serve` still defaults to
 - **Schema bootstrap via `create_all` only** — no Alembic migrations.
 - **Postgres port not published** to the host by default (backend connects internally).
 
+## Maintainer review UI (Session 13)
+
+Session 13 adds a minimal local web UI for the maintainer review workflow. A developer can
+enter a GitHub issue title and body, score it through the existing inference API, inspect
+predicted labels, abstention, and similar historical issues, then submit maintainer feedback.
+
+This is a **local product demo UI**, not production deployment. There is no authentication,
+GitHub import, or feedback history view.
+
+### Prerequisites
+
+The backend must be running with inference artifacts available (see Sessions 10–12). Either:
+
+```bash
+# Option A: local serve (SQLite feedback default)
+pip install -e ".[ml,dev,db]"
+repotriage serve \
+  --config configs/inference/pandas-dev__pandas/local-v1.json \
+  --host 127.0.0.1 \
+  --port 8000
+
+# Option B: Docker Compose (PostgreSQL feedback)
+docker compose up --build
+```
+
+Node.js 18+ and npm are required for the frontend.
+
+### Quick start
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+By default the Vite dev server proxies `/api` and `/health` to `http://127.0.0.1:8000`, so
+no backend CORS configuration is required for local development.
+
+### Workflow
+
+1. Confirm the header health badge shows **Connected · pandas-dev/pandas**.
+2. Enter an issue **title**, optional **body**, and optional **top_k** (default 5).
+3. Click **Score issue** to call `POST /api/v1/infer`.
+4. Review predicted labels, abstention decision, and similar historical issues.
+5. Enter a demo **issue number** (required for feedback; not validated against GitHub).
+6. Choose **Accept prediction**, **Reject prediction**, or **Correct labels**.
+7. On success, a green confirmation shows the stored `feedback_id`.
+
+Artifact IDs and reproducibility hashes appear only in the collapsed **Debug / artifact
+details** section.
+
+### Environment variables
+
+Copy [`frontend/.env.example`](frontend/.env.example) to `frontend/.env`:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VITE_API_BASE_URL` | empty | API base URL. Empty uses relative URLs via the Vite dev proxy. Set to `http://127.0.0.1:8000` only if calling the API directly (requires backend CORS). |
+
+When using Docker Compose with the optional frontend service (below), leave
+`VITE_API_BASE_URL` empty so the browser uses relative URLs proxied by nginx.
+
+### Optional Docker Compose frontend
+
+An optional `frontend` service serves the built UI on port 5173 and proxies API requests to
+the backend container (no CORS changes required):
+
+```bash
+docker compose up --build
+```
+
+The frontend is available at `http://localhost:5173` (`FRONTEND_PORT` in `.env`).
+
+### Frontend tests and build
+
+```bash
+cd frontend
+npm test
+npm run build
+```
+
+### Manual verification
+
+With the backend running on port 8000 and `npm run dev` in `frontend/`:
+
+1. Health badge shows connected status and repository name.
+2. Score the README sample issue (title/body with `top_k: 5`).
+3. Verify classification, abstention banner, and similar issues table render.
+4. Submit **Accept**, **Correct**, and **Reject** feedback with a valid issue number.
+5. Confirm success messages include `feedback_id`.
+6. Stop the backend and confirm the health badge shows **API unreachable**.
+
+If using Docker Compose with PostgreSQL:
+
+```bash
+docker compose exec postgres \
+  psql -U repotriage -d repotriage \
+  -c "SELECT issue_number, review_action, created_at FROM feedback_events ORDER BY created_at DESC LIMIT 3;"
+```
+
+### Session 13 limitations
+
+- **No authentication** — any user with access to the UI can submit feedback.
+- **No GitHub OAuth, issue import, or write-back**.
+- **No feedback history/listing** — success is shown inline only.
+- **Single-repo binding** — repository comes from the backend inference config.
+- **Issue number is demo metadata** — not validated against GitHub or the dataset.
+- **Vite dev proxy is the default** — direct API URL mode needs backend CORS (not included).
+- **Synchronous CPU-bound inference** — scoring may block briefly under load.
+- **Similarity scores are TF-IDF cosine** — low absolute values are expected; not probabilities.
+- **No model retraining, analytics, or multi-repo support**.
+
 ## Limitations: mutable raw history vs immutable processed history
 
 - The raw cache stores one mutable latest snapshot per repository.
