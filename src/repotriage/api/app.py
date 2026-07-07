@@ -8,12 +8,16 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 
 from repotriage.api.errors import register_exception_handlers
+from repotriage.api.routes.feedback import router as feedback_router
 from repotriage.api.routes.health import router as health_router
 from repotriage.api.routes.infer import router as infer_router
 from repotriage.api.settings import ApiSettings
 from repotriage.github.models import parse_repository
 from repotriage.inference.artifact_loader import LoadedInferenceBundle, load_inference_bundle
 from repotriage.inference.config import load_inference_config
+from repotriage.persistence.database import create_feedback_repository
+from repotriage.persistence.feedback_repository import FeedbackRepository
+from repotriage.persistence.settings import resolve_database_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -23,6 +27,7 @@ def create_app(
     *,
     settings: ApiSettings | None = None,
     bundle: LoadedInferenceBundle | None = None,
+    feedback_repository: FeedbackRepository | None = None,
 ) -> FastAPI:
     """Create a FastAPI application with the inference bundle loaded at startup."""
     resolved_settings = settings
@@ -46,7 +51,23 @@ def create_app(
                 retrieval_baselines_root=app.state.settings.retrieval_baselines_root,
                 model_ready_root=app.state.settings.model_ready_root,
             )
-        yield
+
+        if app.state.preloaded_feedback_repository is not None:
+            app.state.feedback_repository = app.state.preloaded_feedback_repository
+        else:
+            database_url = (
+                app.state.settings.database_url
+                if app.state.settings is not None
+                else resolve_database_url()
+            )
+            app.state.feedback_repository = create_feedback_repository(database_url)
+
+        try:
+            yield
+        finally:
+            repo = app.state.feedback_repository
+            if hasattr(repo, "dispose"):
+                repo.dispose()
 
     app = FastAPI(
         title="RepoTriage Inference API",
@@ -55,10 +76,13 @@ def create_app(
     )
     app.state.settings = resolved_settings
     app.state.preloaded_bundle = bundle
+    app.state.preloaded_feedback_repository = feedback_repository
     app.state.bundle = None
+    app.state.feedback_repository = None
 
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(infer_router, prefix="/api/v1")
+    app.include_router(feedback_router, prefix="/api/v1")
 
     return app

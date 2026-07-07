@@ -23,6 +23,7 @@ from repotriage.inference.models import (
     RetrievalResult,
 )
 from repotriage.inference.pipeline import infer_issue as real_infer_issue
+from tests.helpers import noop_feedback_repository
 
 
 def _fake_bundle() -> SimpleNamespace:
@@ -82,7 +83,7 @@ def test_infer_success(monkeypatch: pytest.MonkeyPatch) -> None:
         return _sample_response()
 
     monkeypatch.setattr("repotriage.api.routes.infer.infer_issue", fake_infer_issue)
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post(
@@ -105,7 +106,7 @@ def test_infer_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_infer_missing_title_returns_422() -> None:
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post("/api/v1/infer", json={"body": "no title"})
@@ -114,7 +115,7 @@ def test_infer_missing_title_returns_422() -> None:
 
 
 def test_infer_invalid_top_k_returns_422() -> None:
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post(
@@ -126,7 +127,7 @@ def test_infer_invalid_top_k_returns_422() -> None:
 
 
 def test_infer_extra_field_returns_422() -> None:
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post(
@@ -138,7 +139,7 @@ def test_infer_extra_field_returns_422() -> None:
 
 
 def test_infer_repository_field_returns_422() -> None:
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post(
@@ -150,7 +151,7 @@ def test_infer_repository_field_returns_422() -> None:
 
 
 def test_infer_malformed_json_returns_422() -> None:
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post(
@@ -167,7 +168,7 @@ def test_infer_input_error_returns_422(monkeypatch: pytest.MonkeyPatch) -> None:
         raise InferenceInputError("invalid issue input")
 
     monkeypatch.setattr("repotriage.api.routes.infer.infer_issue", raise_input_error)
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post("/api/v1/infer", json={"title": "Title"})
@@ -181,7 +182,7 @@ def test_infer_error_returns_500(monkeypatch: pytest.MonkeyPatch) -> None:
         raise InferenceError("unexpected inference failure")
 
     monkeypatch.setattr("repotriage.api.routes.infer.infer_issue", raise_inference_error)
-    app = create_app(bundle=_fake_bundle())
+    app = create_app(bundle=_fake_bundle(), feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.post("/api/v1/infer", json={"title": "Title"})

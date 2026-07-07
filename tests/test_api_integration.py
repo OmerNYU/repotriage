@@ -15,6 +15,7 @@ from repotriage.inference.artifact_loader import load_inference_bundle
 from repotriage.inference.models import InferenceIssueInput
 from repotriage.inference.pipeline import infer_issue
 from repotriage.inference.report import format_inference_response_json
+from tests.helpers import noop_feedback_repository
 
 _CONFIG = Path("configs/inference/pandas-dev__pandas/local-v1.json")
 _MODEL_DATASET_ID = "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7"
@@ -50,7 +51,7 @@ def test_api_infer_matches_direct_pipeline() -> None:
     bundle = load_inference_bundle(_CONFIG, repository=repository)
     direct_response = infer_issue(bundle, _ISSUE_INPUT)
 
-    app = create_app(settings=settings)
+    app = create_app(settings=settings, feedback_repository=noop_feedback_repository())
     with TestClient(app) as client:
         health = client.get("/health")
         assert health.status_code == 200
