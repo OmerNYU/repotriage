@@ -765,7 +765,8 @@ repository must exist locally.
 - **Pickle/joblib security** — same trust model as Session 9; load only trusted local
   artifacts.
 - **No hot reload** — config or artifact changes require a server restart.
-- **No GitHub write-back, Docker, or deployment** in this milestone.
+- **No GitHub write-back or deployment** in this milestone. For Docker Compose,
+  see Session 12.
 - **`generated_at` timestamps** differ between separate CLI and API calls for the same
   input.
 - **`issue_number` / `issue_id`** are accepted in the request body but are not reflected
@@ -931,10 +932,153 @@ The endpoint does not verify that `issue_number` exists in the dataset or that
 - **SQLite default** is a dev convenience; production-oriented setups should use
   PostgreSQL via `DATABASE_URL`.
 - **No automatic retraining, GitHub labeling/commenting, multi-repo support, frontend,
-  Docker Compose, or deployment**.
+  or production deployment**. For local Docker Compose, see Session 12.
 
 Prerequisites are identical to Session 10: Sessions 5–8 artifacts for the bound repository
 must exist locally.
+
+## Docker Compose backend (Session 12)
+
+Session 12 adds a **local Docker Compose runtime** for the Session 10–11 backend. A developer
+can start the FastAPI inference API and a PostgreSQL feedback database with one command.
+This is for **cloneability and local deployment readiness**, not production cloud deployment.
+
+### Prerequisites
+
+Inference artifacts are **not committed** to git. Before starting Compose, Sessions 5–8
+artifacts for `pandas-dev/pandas` must exist on the host under:
+
+- `data/model_ready/github/`
+- `data/baselines/github/`
+- `data/threshold_policies/github/`
+- `data/abstention_policies/github/`
+- `data/retrieval_baselines/github/`
+
+See Sessions 5–8 above for how to generate these directories. A fresh `git clone` alone is
+not sufficient — copy artifacts from another machine or run the local build pipeline first.
+
+Create host directories if needed:
+
+```bash
+mkdir -p data/{model_ready,baselines,threshold_policies,abstention_policies,retrieval_baselines}/github
+```
+
+### Quick start
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The backend listens on `http://localhost:8000` by default (`BACKEND_PORT` in `.env`).
+
+Health check:
+
+```bash
+curl -sS http://localhost:8000/health | python -m json.tool
+```
+
+Infer request:
+
+```bash
+curl -sS -X POST http://localhost:8000/api/v1/infer \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "BUG: loc indexing returns unexpected result",
+    "body": "When using .loc with a list indexer, result dtype is wrong.",
+    "top_k": 5
+  }' | python -m json.tool
+```
+
+Feedback request (use artifact IDs from the infer response or from `local-v1.json`):
+
+```bash
+curl -sS -X POST http://localhost:8000/api/v1/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "repository": "pandas-dev/pandas",
+    "issue_number": 12345,
+    "issue_title": "BUG: loc indexing returns unexpected result",
+    "predicted_labels": ["Indexing"],
+    "accepted_labels": ["Bug", "Indexing"],
+    "rejected_labels": [],
+    "review_action": "corrected",
+    "inference_artifacts": {
+      "model_dataset_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7",
+      "baseline_run_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602",
+      "threshold_policy_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602-tp1-ccaab0996458",
+      "abstention_policy_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602-tp1-ccaab0996458-ap1-9c3c140e7ccb",
+      "retrieval_run_id": "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-rb1-deb29b6da4eb"
+    }
+  }' -w '\nHTTP %{http_code}\n'
+```
+
+### Architecture
+
+- **`backend`** — builds from [`Dockerfile`](Dockerfile); runs `repotriage serve` on
+  `0.0.0.0:8000` with ML artifacts bind-mounted read-only from `./data/`.
+- **`postgres`** — `postgres:16-alpine` with a named volume (`postgres_data`) for durable
+  feedback storage.
+- **Configs** — baked into the backend image from `configs/` (committed).
+- **Artifacts** — host-mounted at runtime; not copied into the image.
+
+`GET /health` reports inference-bundle status only. It does not probe PostgreSQL; an
+unreachable database causes startup to fail before requests are accepted.
+
+### Environment variables
+
+Copy [`.env.example`](.env.example) to `.env` before the first run:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `POSTGRES_USER` | `repotriage` | PostgreSQL role |
+| `POSTGRES_PASSWORD` | `repotriage` | PostgreSQL password (local dev only) |
+| `POSTGRES_DB` | `repotriage` | PostgreSQL database name |
+| `BACKEND_PORT` | `8000` | Host port mapped to the backend container |
+| `REPOTRIAGE_INFERENCE_CONFIG` | `configs/inference/pandas-dev__pandas/local-v1.json` | Inference bundle config path |
+| `DATABASE_URL` | `postgresql+psycopg://repotriage:repotriage@postgres:5432/repotriage` | SQLAlchemy URL for feedback persistence |
+
+### Verify PostgreSQL persistence
+
+```bash
+docker compose exec postgres \
+  psql -U repotriage -d repotriage \
+  -c "SELECT id, repository, issue_number, review_action, created_at FROM feedback_events ORDER BY created_at DESC LIMIT 5;"
+```
+
+### Smoke test
+
+```bash
+./scripts/docker-smoke.sh
+```
+
+This script builds and starts the stack, calls `/health`, `/api/v1/infer`, and
+`/api/v1/feedback`, then verifies at least one row exists in `feedback_events`.
+
+### Stopping and resetting
+
+```bash
+docker compose down          # stop containers, keep postgres volume
+docker compose down -v       # stop containers and delete postgres data
+```
+
+### Non-Docker local development
+
+Docker Compose is optional. Outside Docker, `repotriage serve` still defaults to SQLite
+(`./data/repotriage_feedback.db`) when `DATABASE_URL` is unset. See Session 11 above.
+
+### Session 12 limitations
+
+- **Local dev only** — default `.env` credentials are not suitable for production.
+- **Artifacts required on host** — git clone alone does not include ML artifacts.
+- **No artifact distribution** — no download service or release image with baked artifacts.
+- **No authentication, frontend, cloud deployment, or Kubernetes**.
+- **No hot reload** — config or artifact changes require `docker compose restart backend`.
+- **Synchronous CPU-bound inference** — same as Session 10.
+- **Pickle/joblib trust model** — mount only trusted local artifacts.
+- **`/health` does not check Postgres** after startup.
+- **Schema bootstrap via `create_all` only** — no Alembic migrations.
+- **Postgres port not published** to the host by default (backend connects internally).
 
 ## Limitations: mutable raw history vs immutable processed history
 
