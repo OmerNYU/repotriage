@@ -519,3 +519,108 @@ def write_inference_config(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+TEST_MODEL_DATASET_ID = "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7"
+TEST_BASELINE_RUN_ID = (
+    "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602"
+)
+TEST_THRESHOLD_POLICY_ID = (
+    "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602"
+    "-tp1-ccaab0996458"
+)
+TEST_ABSTENTION_POLICY_ID = (
+    "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-bl4-46227a0ec602"
+    "-tp1-ccaab0996458-ap1-9c3c140e7ccb"
+)
+TEST_RETRIEVAL_RUN_ID = (
+    "20260628T161306010651Z-n1-074402d21505-md1-14a9768bded7-rb1-deb29b6da4eb"
+)
+DEFAULT_TEST_LABEL_ORDER = ["Bug", "Indexing", "IO"]
+
+
+def sqlite_database_url(tmp_path: Path, name: str = "test.db") -> str:
+    """Return a SQLite database URL backed by a file under tmp_path."""
+    return f"sqlite:///{tmp_path / name}"
+
+
+def make_test_bundle(
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    label_order: list[str] | None = None,
+    model_dataset_id: str = TEST_MODEL_DATASET_ID,
+    baseline_run_id: str = TEST_BASELINE_RUN_ID,
+    threshold_policy_id: str = TEST_THRESHOLD_POLICY_ID,
+    abstention_policy_id: str = TEST_ABSTENTION_POLICY_ID,
+    retrieval_run_id: str = TEST_RETRIEVAL_RUN_ID,
+):
+    """Build a minimal inference bundle stub for feedback validation tests."""
+    from types import SimpleNamespace
+
+    from repotriage.github.models import RepositoryRef
+    from repotriage.inference.config import InferenceConfigDocument
+
+    owner, name = repository.split("/", 1)
+    config = InferenceConfigDocument(
+        repository=repository,
+        model_dataset_id=model_dataset_id,
+        baseline_run_id=baseline_run_id,
+        threshold_policy_id=threshold_policy_id,
+        abstention_policy_id=abstention_policy_id,
+        retrieval_run_id=retrieval_run_id,
+        default_top_k=5,
+    )
+    return SimpleNamespace(
+        repository=RepositoryRef(owner=owner, name=name),
+        config=config,
+        label_order=list(label_order or DEFAULT_TEST_LABEL_ORDER),
+    )
+
+
+def make_feedback_request_payload(
+    *,
+    repository: str = DEFAULT_TEST_REPOSITORY,
+    issue_number: int = 12345,
+    predicted_labels: list[str] | None = None,
+    accepted_labels: list[str] | None = None,
+    rejected_labels: list[str] | None = None,
+    review_action: str = "corrected",
+    reviewer_note: str | None = "Should also include Bug.",
+) -> dict[str, object]:
+    """Build a valid feedback request payload for API tests."""
+    predicted = predicted_labels if predicted_labels is not None else ["Indexing"]
+    accepted = accepted_labels if accepted_labels is not None else ["Bug", "Indexing"]
+    rejected = rejected_labels if rejected_labels is not None else []
+    return {
+        "repository": repository,
+        "issue_number": issue_number,
+        "issue_title": "BUG: loc indexing returns unexpected result",
+        "issue_body_preview": "When using .loc...",
+        "predicted_labels": predicted,
+        "accepted_labels": accepted,
+        "rejected_labels": rejected,
+        "review_action": review_action,
+        "reviewer_note": reviewer_note,
+        "inference_artifacts": {
+            "model_dataset_id": TEST_MODEL_DATASET_ID,
+            "baseline_run_id": TEST_BASELINE_RUN_ID,
+            "threshold_policy_id": TEST_THRESHOLD_POLICY_ID,
+            "abstention_policy_id": TEST_ABSTENTION_POLICY_ID,
+            "retrieval_run_id": TEST_RETRIEVAL_RUN_ID,
+        },
+    }
+
+
+def noop_feedback_repository():
+    """Return a feedback repository stub that acknowledges without persisting."""
+    from types import SimpleNamespace
+
+    from repotriage.persistence.schemas import FeedbackResponse
+
+    def store(_body):
+        return FeedbackResponse(
+            feedback_id="00000000-0000-0000-0000-000000000001",
+            created_at="2026-01-01T00:00:00Z",
+        )
+
+    return SimpleNamespace(store=store, dispose=lambda: None)

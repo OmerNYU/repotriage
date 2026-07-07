@@ -7,8 +7,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from repotriage.inference.models import InferenceIssueInput
+from repotriage.persistence.schemas import FeedbackResponse
 
 InferRequest = InferenceIssueInput
+
+__all__ = ["FeedbackResponse", "HealthResponse", "InferRequest"]
 
 
 class HealthResponse(BaseModel):

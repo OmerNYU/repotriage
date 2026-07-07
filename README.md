@@ -765,8 +765,7 @@ repository must exist locally.
 - **Pickle/joblib security** — same trust model as Session 9; load only trusted local
   artifacts.
 - **No hot reload** — config or artifact changes require a server restart.
-- **No feedback persistence, PostgreSQL, GitHub write-back, Docker, or deployment** in this
-  milestone.
+- **No GitHub write-back, Docker, or deployment** in this milestone.
 - **`generated_at` timestamps** differ between separate CLI and API calls for the same
   input.
 - **`issue_number` / `issue_id`** are accepted in the request body but are not reflected
@@ -774,6 +773,168 @@ repository must exist locally.
 - **Retrieval results** are similar historical train-corpus issues and nearest neighbors
   under the TF-IDF representation — not guaranteed duplicates and not evidence of semantic
   understanding.
+
+## Maintainer feedback persistence (Session 11)
+
+Session 11 adds the first durable maintainer-feedback persistence layer. After a maintainer
+reviews an inference prediction, the backend can store a review event with predicted and
+corrected labels, review action, optional note, issue metadata, and inference artifact IDs.
+This is a write-only local/dev foundation for human-in-the-loop feedback — not production
+deployment.
+
+Install dependencies (PostgreSQL driver is optional and only needed for `postgresql://`
+URLs):
+
+```bash
+pip install -e ".[ml,dev,db]"
+```
+
+### Database setup
+
+By default the server stores feedback in a local SQLite file:
+
+```text
+./data/repotriage_feedback.db
+```
+
+For PostgreSQL, set `DATABASE_URL` (requires the `[db]` extra):
+
+```bash
+createdb repotriage
+export DATABASE_URL="postgresql+psycopg://repotriage:repotriage@localhost:5432/repotriage"
+```
+
+### Start the server
+
+```bash
+repotriage serve \
+  --config configs/inference/pandas-dev__pandas/local-v1.json \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --database-url "${DATABASE_URL:-sqlite:///./data/repotriage_feedback.db}"
+```
+
+The `--database-url` flag overrides the `DATABASE_URL` environment variable. When neither
+is set, the default SQLite path above is used.
+
+`GET /health` reports inference-bundle status only (repository and config path). It does
+not expose feedback-database connectivity; an unreachable feedback database causes startup
+to fail before the server accepts requests.
+
+### Workflow: infer, then submit feedback
+
+```bash
+# 1. Score an issue
+curl -sS -X POST http://127.0.0.1:8000/api/v1/infer \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "BUG: loc indexing returns unexpected result",
+    "body": "When using .loc with a list indexer, result dtype is wrong.",
+    "top_k": 5
+  }' | python -m json.tool
+
+# 2. Submit maintainer feedback using labels and artifact IDs from the infer response
+curl -sS -X POST http://127.0.0.1:8000/api/v1/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "repository": "pandas-dev/pandas",
+    "issue_number": 12345,
+    "issue_title": "BUG: loc indexing returns unexpected result",
+    "issue_body_preview": "When using .loc...",
+    "predicted_labels": ["Indexing"],
+    "accepted_labels": ["Bug", "Indexing"],
+    "rejected_labels": [],
+    "review_action": "corrected",
+    "reviewer_note": "Should also include Bug.",
+    "inference_artifacts": {
+      "model_dataset_id": "<from infer response artifacts>",
+      "baseline_run_id": "<from infer response artifacts>",
+      "threshold_policy_id": "<from infer response artifacts>",
+      "abstention_policy_id": "<from infer response artifacts>",
+      "retrieval_run_id": "<from infer response artifacts>"
+    }
+  }' -w '\nHTTP %{http_code}\n'
+```
+
+Validation error (wrong repository):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/v1/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "repository": "other/repo",
+    "issue_number": 12345,
+    "issue_title": "BUG: example",
+    "predicted_labels": ["Indexing"],
+    "accepted_labels": ["Indexing"],
+    "rejected_labels": [],
+    "review_action": "accepted",
+    "inference_artifacts": {
+      "model_dataset_id": "<from infer response artifacts>",
+      "baseline_run_id": "<from infer response artifacts>",
+      "threshold_policy_id": "<from infer response artifacts>",
+      "abstention_policy_id": "<from infer response artifacts>",
+      "retrieval_run_id": "<from infer response artifacts>"
+    }
+  }' -w '\nHTTP %{http_code}\n'
+```
+
+A successful response returns HTTP 201:
+
+```json
+{
+  "feedback_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "created_at": "2026-07-07T13:00:00Z",
+  "status": "stored"
+}
+```
+
+### Feedback request fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `repository` | yes | Must match the server-bound repository from inference config |
+| `issue_number` | yes | GitHub issue number (`> 0`) |
+| `issue_title` | yes | Issue title at review time |
+| `issue_body_preview` | no | Up to 200 characters of issue body |
+| `predicted_labels` | yes | Labels the model predicted |
+| `accepted_labels` | yes | Labels the maintainer accepts as correct |
+| `rejected_labels` | no | Labels explicitly rejected (default `[]`) |
+| `review_action` | yes | `accepted`, `corrected`, or `rejected` |
+| `reviewer_note` | no | Optional free-text note (max 4000 chars) |
+| `inference_artifacts` | yes | Five artifact IDs from the inference response |
+
+### Validation rules
+
+- **Repository** must match the loaded inference bundle (same single-repo binding as
+  `POST /api/v1/infer`).
+- **Labels** must belong to the bundle's canonical `label_order`; no duplicates within a
+  list; `accepted_labels` and `rejected_labels` must be disjoint.
+- **Artifact IDs** must match the format regexes and exactly match the loaded bundle's
+  config IDs.
+- **`review_action` coherence**:
+  - `accepted`: `accepted_labels == predicted_labels` and `rejected_labels` is empty
+  - `corrected`: `accepted_labels != predicted_labels`
+  - `rejected`: `accepted_labels` is empty and `rejected_labels` equals `predicted_labels`
+
+The endpoint does not verify that `issue_number` exists in the dataset or that
+`predicted_labels` match a fresh inference call.
+
+### Session 11 limitations
+
+- **No authentication** — any client with network access can write feedback.
+- **Write-only** — no feedback read/list API in this milestone.
+- **No deduplication, edit, or delete** — multiple reviews per issue are allowed.
+- **No linkage to a server-side inference request ID** — only artifact IDs and issue
+  metadata are stored.
+- **Schema bootstrap via `create_all` only** — no Alembic migrations yet.
+- **SQLite default** is a dev convenience; production-oriented setups should use
+  PostgreSQL via `DATABASE_URL`.
+- **No automatic retraining, GitHub labeling/commenting, multi-repo support, frontend,
+  Docker Compose, or deployment**.
+
+Prerequisites are identical to Session 10: Sessions 5–8 artifacts for the bound repository
+must exist locally.
 
 ## Limitations: mutable raw history vs immutable processed history
 

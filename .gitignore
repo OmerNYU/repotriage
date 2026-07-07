@@ -33,6 +33,14 @@ data/abstention_policies/
 data/retrieval_baselines/
 artifacts/
 
+# Session 11 feedback SQLite (default local persistence)
+data/repotriage_feedback.db
+data/repotriage_feedback.db-*
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
 # Operating-system files
 .DS_Store
 Thumbs.db

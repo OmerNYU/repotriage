@@ -13,6 +13,10 @@ from repotriage.inference.artifact_loader import (
     DEFAULT_RETRIEVAL_BASELINES_ROOT,
 )
 from repotriage.model_dataset.builder import DEFAULT_MODEL_READY_ROOT
+from repotriage.persistence.settings import (
+    DEFAULT_DATABASE_URL,
+    resolve_database_url,
+)
 from repotriage.threshold_policy.builder import DEFAULT_THRESHOLD_POLICIES_ROOT
 
 INFERENCE_CONFIG_ENV_VAR = "REPOTRIAGE_INFERENCE_CONFIG"
@@ -23,6 +27,7 @@ class ApiSettings:
     """Runtime configuration for the inference API server."""
 
     inference_config_path: Path
+    database_url: str = DEFAULT_DATABASE_URL
     baselines_root: Path = DEFAULT_BASELINES_ROOT
     threshold_policies_root: Path = DEFAULT_THRESHOLD_POLICIES_ROOT
     abstention_policies_root: Path = DEFAULT_ABSTENTION_POLICIES_ROOT
@@ -31,20 +36,24 @@ class ApiSettings:
 
     @classmethod
     def from_env(cls) -> ApiSettings:
-        """Load settings from REPOTRIAGE_INFERENCE_CONFIG."""
+        """Load settings from REPOTRIAGE_INFERENCE_CONFIG and DATABASE_URL."""
         raw = os.environ.get(INFERENCE_CONFIG_ENV_VAR)
         if not raw:
             raise ValueError(
                 f"{INFERENCE_CONFIG_ENV_VAR} environment variable is required "
                 "when settings are not passed explicitly."
             )
-        return cls(inference_config_path=Path(raw))
+        return cls(
+            inference_config_path=Path(raw),
+            database_url=resolve_database_url(),
+        )
 
     @classmethod
     def from_namespace(cls, args: Any) -> ApiSettings:
         """Build settings from a CLI argparse namespace."""
         return cls(
             inference_config_path=args.config,
+            database_url=resolve_database_url(cli_value=getattr(args, "database_url", None)),
             baselines_root=args.baselines_root,
             threshold_policies_root=args.threshold_policies_root,
             abstention_policies_root=args.abstention_policies_root,

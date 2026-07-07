@@ -59,6 +59,7 @@ from repotriage.model_dataset.builder import (
     format_model_dataset_summary,
 )
 from repotriage.model_dataset.models import MODEL_DATASET_ID_PATTERN, ModelDatasetError
+from repotriage.persistence.settings import DATABASE_URL_ENV_VAR
 from repotriage.retrieval.builder import (
     DEFAULT_RETRIEVAL_BASELINES_ROOT,
     build_retrieval_baseline,
@@ -537,6 +538,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_MODEL_READY_ROOT,
         help=f"Root directory for model-ready artifacts (default: {DEFAULT_MODEL_READY_ROOT})",
+    )
+    serve_parser.add_argument(
+        "--database-url",
+        default=None,
+        help=(
+            "SQLAlchemy database URL for feedback persistence "
+            f"(overrides {DATABASE_URL_ENV_VAR} env var; "
+            "default: sqlite:///./data/repotriage_feedback.db)"
+        ),
     )
     return parser
 

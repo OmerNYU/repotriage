@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from repotriage.api.app import create_app
 from repotriage.github.models import RepositoryRef
+from tests.helpers import noop_feedback_repository
 
 
 def _fake_bundle(*, config_path: str = "configs/test.json"):
@@ -20,7 +21,7 @@ def _fake_bundle(*, config_path: str = "configs/test.json"):
 
 def test_health_returns_ok_with_bundle_metadata() -> None:
     bundle = _fake_bundle()
-    app = create_app(bundle=bundle)
+    app = create_app(bundle=bundle, feedback_repository=noop_feedback_repository())
 
     with TestClient(app) as client:
         response = client.get("/health")
