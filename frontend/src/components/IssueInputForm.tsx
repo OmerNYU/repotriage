@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react'
 import type { IssueFormValues } from '../hooks/useInference'
+import { SAMPLE_ISSUES, toFormValues } from '../lib/samples'
 
 interface IssueInputFormProps {
   values: IssueFormValues
@@ -19,9 +20,34 @@ export function IssueInputForm({
     onSubmit(values)
   }
 
+  const canScore = values.title.trim().length > 0
+
   return (
-    <section className="panel">
-      <h2>Issue input</h2>
+    <section className="panel panel-workbench">
+      <div className="workbench-header">
+        <p className="panel-eyebrow">Maintainer workflow</p>
+        <h2>Issue workbench</h2>
+        <p className="panel-lead">
+          Paste an issue or load a sample, then score. Nothing is written to GitHub.
+        </p>
+      </div>
+
+      <div className="sample-row" role="group" aria-label="Sample issues">
+        <span className="sample-row-label">Try a sample</span>
+        {SAMPLE_ISSUES.map((sample) => (
+          <button
+            key={sample.id}
+            type="button"
+            className="sample-btn"
+            disabled={loading}
+            title={sample.description}
+            onClick={() => onChange(toFormValues(sample))}
+          >
+            {sample.label}
+          </button>
+        ))}
+      </div>
+
       <form className="issue-form" onSubmit={handleSubmit}>
         <label className="field">
           <span>Title</span>
@@ -31,13 +57,15 @@ export function IssueInputForm({
             value={values.title}
             disabled={loading}
             onChange={(e) => onChange({ ...values, title: e.target.value })}
-            placeholder="BUG: loc indexing returns unexpected result"
+            placeholder="Short issue title"
           />
         </label>
         <label className="field">
-          <span>Body</span>
+          <span>
+            Body <span className="field-hint-inline">(optional)</span>
+          </span>
           <textarea
-            rows={6}
+            rows={3}
             value={values.body}
             disabled={loading}
             onChange={(e) => onChange({ ...values, body: e.target.value })}
@@ -45,7 +73,7 @@ export function IssueInputForm({
           />
         </label>
         <label className="field field-inline">
-          <span>Similar issues (top_k)</span>
+          <span>Number of similar issues</span>
           <input
             type="number"
             min={1}
@@ -56,9 +84,15 @@ export function IssueInputForm({
             }
           />
         </label>
-        <button type="submit" className="btn btn-primary" disabled={loading || !values.title.trim()}>
-          {loading ? 'Scoring…' : 'Score issue'}
-        </button>
+        <div className="workbench-actions">
+          <button
+            type="submit"
+            className={`btn btn-primary btn-score${canScore && !loading ? ' btn-score-ready' : ''}`}
+            disabled={loading || !canScore}
+          >
+            {loading ? 'Scoring…' : 'Score issue'}
+          </button>
+        </div>
       </form>
     </section>
   )

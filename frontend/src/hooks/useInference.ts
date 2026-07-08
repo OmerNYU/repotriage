@@ -16,6 +16,7 @@ export function useInference() {
   const submit = useCallback(async (values: IssueFormValues) => {
     setLoading(true)
     setError(null)
+    setResult(null)
     try {
       const body: InferRequest = {
         title: values.title.trim(),
@@ -41,5 +42,9 @@ export function useInference() {
     setLoading(false)
   }, [])
 
-  return { result, loading, error, submit, reset }
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+
+  return { result, loading, error, submit, reset, clearError }
 }

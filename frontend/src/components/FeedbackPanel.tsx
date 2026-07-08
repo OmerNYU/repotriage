@@ -17,6 +17,7 @@ interface FeedbackPanelProps {
   issueNumber: number | ''
   reviewerNote: string
   loading: boolean
+  settled?: boolean
   onIssueNumberChange: (value: number | '') => void
   onReviewerNoteChange: (value: string) => void
   onAccept: (context: FeedbackContext) => void
@@ -31,6 +32,7 @@ export function FeedbackPanel({
   issueNumber,
   reviewerNote,
   loading,
+  settled = false,
   onIssueNumberChange,
   onReviewerNoteChange,
   onAccept,
@@ -48,7 +50,7 @@ export function FeedbackPanel({
   }, [inferResult.generated_at, predictedLabels.join('|')])
 
   const issueNumberValid = typeof issueNumber === 'number' && isValidIssueNumber(issueNumber)
-  const actionsDisabled = loading || !issueNumberValid
+  const actionsDisabled = loading || settled || !issueNumberValid
 
   const baseContext = (): FeedbackContext | null => {
     if (!issueNumberValid) {
@@ -89,56 +91,64 @@ export function FeedbackPanel({
   }
 
   const rejectDisabled = actionsDisabled || predictedLabels.length === 0
-  const correctionReady =
-    canSubmitCorrection(
-      labelOrder.filter((label) => selectedLabels.includes(label)),
-      predictedLabels,
-    )
+  const correctionReady = canSubmitCorrection(
+    labelOrder.filter((label) => selectedLabels.includes(label)),
+    predictedLabels,
+  )
 
   return (
-    <section className="panel">
-      <h2>Maintainer review</h2>
+    <section
+      className={`panel panel-feedback${settled ? ' panel-settled' : ''}`}
+      aria-disabled={settled || undefined}
+    >
+      <p className="panel-eyebrow">Maintainer review</p>
+      <h2>Record feedback</h2>
+      <p className="panel-lead panel-lead-compact">
+        Accept, reject, or correct labels for this run. Issue numbers are demo tracking IDs only.
+      </p>
 
-      <label className="field">
-        <span>Issue number</span>
-        <input
-          type="number"
-          min={1}
-          value={issueNumber}
-          disabled={loading}
-          onChange={(e) => {
-            const raw = e.target.value
-            onIssueNumberChange(raw === '' ? '' : Number(raw))
-          }}
-          placeholder="12345"
-        />
-        <span className="field-hint">Demo tracking ID — not validated against GitHub.</span>
-      </label>
+      <div className="feedback-fields">
+        <label className="field field-issue-number">
+          <span>Issue number</span>
+          <input
+            type="number"
+            min={1}
+            value={issueNumber}
+            disabled={loading || settled}
+            onChange={(e) => {
+              const raw = e.target.value
+              onIssueNumberChange(raw === '' ? '' : Number(raw))
+            }}
+            placeholder="12345"
+          />
+          <span className="field-hint">Not validated against GitHub.</span>
+        </label>
 
-      <label className="field">
-        <span>Reviewer note (optional)</span>
-        <textarea
-          rows={3}
-          value={reviewerNote}
-          disabled={loading}
-          maxLength={4000}
-          onChange={(e) => onReviewerNoteChange(e.target.value)}
-          placeholder="Optional note for this review…"
-        />
-      </label>
+        <label className="field">
+          <span>Reviewer note (optional)</span>
+          <textarea
+            rows={2}
+            value={reviewerNote}
+            disabled={loading || settled}
+            maxLength={4000}
+            onChange={(e) => onReviewerNoteChange(e.target.value)}
+            placeholder="Optional note for this review…"
+          />
+        </label>
+      </div>
 
-      <div className="action-row">
+      <div className="action-row action-row-feedback">
         <button
           type="button"
-          className="btn btn-success"
+          className="btn btn-success btn-compact"
           disabled={actionsDisabled}
           onClick={handleAccept}
         >
-          Accept prediction
+          Accept
         </button>
         <button
           type="button"
-          className="btn btn-danger"
+          className="btn btn-danger btn-compact"
           disabled={rejectDisabled}
           title={
             predictedLabels.length === 0
@@ -147,11 +157,11 @@ export function FeedbackPanel({
           }
           onClick={handleReject}
         >
-          Reject prediction
+          Reject
         </button>
         <button
           type="button"
-          className="btn"
+          className="btn btn-neutral btn-compact"
           disabled={actionsDisabled}
           onClick={() => {
             setSelectedLabels(predictedLabels)
@@ -162,18 +172,21 @@ export function FeedbackPanel({
         </button>
       </div>
 
-      {correcting && (
+      {correcting && !settled && (
         <div className="correction-panel">
-          <LabelCheckboxGroup
-            labelOrder={labelOrder}
-            selectedLabels={selectedLabels}
-            disabled={loading}
-            onChange={setSelectedLabels}
-          />
-          <div className="action-row">
+          <p className="correction-title">Correct predicted labels</p>
+          <div className="correction-box">
+            <LabelCheckboxGroup
+              labelOrder={labelOrder}
+              selectedLabels={selectedLabels}
+              disabled={loading}
+              onChange={setSelectedLabels}
+            />
+          </div>
+          <div className="action-row action-row-feedback">
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary btn-compact"
               disabled={actionsDisabled || !correctionReady}
               onClick={handleCorrectSubmit}
             >
@@ -181,7 +194,7 @@ export function FeedbackPanel({
             </button>
             <button
               type="button"
-              className="btn"
+              className="btn btn-neutral btn-compact"
               disabled={loading}
               onClick={() => setCorrecting(false)}
             >
