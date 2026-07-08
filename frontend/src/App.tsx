@@ -8,6 +8,7 @@ import {
 } from './components/FeedbackPanel'
 import { InferenceResults } from './components/InferenceResults'
 import { IssueInputForm } from './components/IssueInputForm'
+import { OutcomePreview } from './components/OutcomePreview'
 import { StatusAlert } from './components/StatusAlert'
 import { useFeedback } from './hooks/useFeedback'
 import { useHealth } from './hooks/useHealth'
@@ -20,6 +21,13 @@ const DEFAULT_ISSUE: IssueFormValues = {
   body: '',
   top_k: 5,
 }
+
+const CAPABILITIES = [
+  'Predict labels',
+  'Recommend abstention',
+  'Retrieve similar issues',
+  'Capture feedback',
+] as const
 
 function App() {
   const health = useHealth()
@@ -47,29 +55,61 @@ function App() {
     setReviewerNote('')
   }
 
+  const showOutcomePreview = !inference.loading && !inference.result
+
   return (
     <div className="app">
       <header className="app-header">
-        <div>
-          <h1>RepoTriage Maintainer Review</h1>
-          <p className="subtitle">Local demo for issue scoring and maintainer feedback.</p>
+        <div className="brand">
+          <h1 className="brand-mark">RepoTriage</h1>
+          <p className="brand-tagline">Local issue intelligence for open-source maintainers.</p>
+          <ul className="capability-strip" aria-label="Product capabilities">
+            {CAPABILITIES.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
-        <HealthIndicator health={health} />
+        <div className="header-meta">
+          <HealthIndicator health={health} />
+        </div>
       </header>
 
-      <main className="app-main">
-        <IssueInputForm
-          values={issueForm}
-          loading={inference.loading}
-          onChange={setIssueForm}
-          onSubmit={handleInfer}
-        />
+      <main className="app-main" aria-busy={inference.loading}>
+        <div
+          className={
+            showOutcomePreview ? 'workbench-layout workbench-layout-split' : 'workbench-layout'
+          }
+        >
+          <IssueInputForm
+            values={issueForm}
+            loading={inference.loading}
+            onChange={setIssueForm}
+            onSubmit={handleInfer}
+          />
+          {showOutcomePreview && <OutcomePreview />}
+        </div>
 
-        {inference.error && (
-          <StatusAlert variant="error" title="Inference failed" message={inference.error} />
+        {inference.loading && (
+          <section className="panel loading-skeleton" aria-live="polite" role="status">
+            <span className="sr-only">Scoring issue…</span>
+            <div className="skeleton-line narrow" />
+            <div className="skeleton-line medium" />
+            <div className="skeleton-block" />
+            <div className="skeleton-line wide" />
+            <div className="skeleton-line medium" />
+          </section>
         )}
 
-        {inference.result && (
+        {inference.error && (
+          <StatusAlert
+            variant="error"
+            title="Inference failed"
+            message={inference.error}
+            onDismiss={inference.clearError}
+          />
+        )}
+
+        {inference.result && !inference.loading && (
           <>
             <InferenceResults result={inference.result} />
             <FeedbackPanel
@@ -79,6 +119,7 @@ function App() {
               issueNumber={issueNumber}
               reviewerNote={reviewerNote}
               loading={feedback.loading}
+              settled={Boolean(feedback.success)}
               onIssueNumberChange={setIssueNumber}
               onReviewerNoteChange={setReviewerNote}
               onAccept={(context) => void submitFeedback(buildAcceptedFeedback(context))}

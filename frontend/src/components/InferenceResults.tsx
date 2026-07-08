@@ -3,6 +3,7 @@ import { humanizeWarning } from '../lib/format'
 import { AbstentionBanner } from './AbstentionBanner'
 import { ClassificationPanel } from './ClassificationPanel'
 import { DebugDetails } from './DebugDetails'
+import { ResultsSummary } from './ResultsSummary'
 import { SimilarIssuesList } from './SimilarIssuesList'
 
 interface InferenceResultsProps {
@@ -11,12 +12,17 @@ interface InferenceResultsProps {
 
 export function InferenceResults({ result }: InferenceResultsProps) {
   return (
-    <section className="panel">
-      <h2>Inference results</h2>
-      <p className="meta">
-        Repository: <strong>{result.repository}</strong> · Generated at{' '}
-        {new Date(result.generated_at).toLocaleString()}
-      </p>
+    <section className="panel panel-results">
+      <div className="results-header">
+        <h2>Inference results</h2>
+        <p className="meta results-meta">
+          <span className="mono">{result.repository}</span>
+          <span aria-hidden="true"> · </span>
+          {new Date(result.generated_at).toLocaleString()}
+        </p>
+      </div>
+
+      <ResultsSummary result={result} />
 
       {result.warnings.length > 0 && (
         <div className="alert alert-warning" role="status">

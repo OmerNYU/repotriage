@@ -5,39 +5,43 @@ interface DebugDetailsProps {
   reproducibility: ReproducibilityMetadata
 }
 
+function MonoBlock({ children }: { children: string }) {
+  return <dd className="mono mono-block">{children}</dd>
+}
+
 export function DebugDetails({ artifacts, reproducibility }: DebugDetailsProps) {
   return (
-    <details className="debug-details">
+    <details className="debug-details tech-details">
       <summary>Debug / artifact details</summary>
-      <div className="debug-grid">
+      <div className="tech-details-body debug-grid">
         <div>
           <h4>Artifacts</h4>
-          <dl>
+          <dl className="debug-dl">
             <dt>model_dataset_id</dt>
-            <dd>{artifacts.model_dataset_id}</dd>
+            <MonoBlock>{artifacts.model_dataset_id}</MonoBlock>
             <dt>baseline_run_id</dt>
-            <dd>{artifacts.baseline_run_id}</dd>
+            <MonoBlock>{artifacts.baseline_run_id}</MonoBlock>
             <dt>threshold_policy_id</dt>
-            <dd>{artifacts.threshold_policy_id}</dd>
+            <MonoBlock>{artifacts.threshold_policy_id}</MonoBlock>
             <dt>abstention_policy_id</dt>
-            <dd>{artifacts.abstention_policy_id}</dd>
+            <MonoBlock>{artifacts.abstention_policy_id}</MonoBlock>
             <dt>retrieval_run_id</dt>
-            <dd>{artifacts.retrieval_run_id}</dd>
+            <MonoBlock>{artifacts.retrieval_run_id}</MonoBlock>
           </dl>
         </div>
         <div>
           <h4>Reproducibility</h4>
-          <dl>
+          <dl className="debug-dl">
             <dt>inference_config_path</dt>
-            <dd>{reproducibility.inference_config_path}</dd>
+            <MonoBlock>{reproducibility.inference_config_path}</MonoBlock>
             <dt>model_semantic_sha256</dt>
-            <dd className="mono">{reproducibility.model_semantic_sha256}</dd>
+            <MonoBlock>{reproducibility.model_semantic_sha256}</MonoBlock>
             <dt>index_semantic_sha256</dt>
-            <dd className="mono">{reproducibility.index_semantic_sha256}</dd>
+            <MonoBlock>{reproducibility.index_semantic_sha256}</MonoBlock>
             <dt>baseline_experiment_sha256</dt>
-            <dd className="mono">{reproducibility.baseline_experiment_sha256}</dd>
+            <MonoBlock>{reproducibility.baseline_experiment_sha256}</MonoBlock>
             <dt>numerical_environment_sha256</dt>
-            <dd className="mono">{reproducibility.numerical_environment_sha256}</dd>
+            <MonoBlock>{reproducibility.numerical_environment_sha256}</MonoBlock>
             {reproducibility.serialization_security_warning && (
               <>
                 <dt>serialization_security_warning</dt>
