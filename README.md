@@ -66,48 +66,73 @@ If artifacts are missing or invalid, see [`docs/demo.md`](docs/demo.md).
 
 ## Architecture
 
-Local inference service with artifact-bound ML steps and a feedback write path.
+RepoTriage is split into two paths:
 
-### Runtime architecture
+1. an **offline artifact-building path** that prepares datasets, models, thresholds, abstention policy, and retrieval indexes;
+2. a **runtime review path** that serves predictions, retrieval results, and feedback capture through the API and UI.
 
-```text
-User enters issue title/body
-  → React maintainer UI
-  → POST /api/v1/infer
-  → FastAPI inference service
-  → build feature text
-  → load classifier artifact
-  → predict per-label probabilities
-  → apply label threshold
-  → apply abstention policy
-  → retrieve similar historical training issues
-  → return prediction + abstention + similar issues
-  → maintainer accepts / rejects / corrects
-  → POST /api/v1/feedback
-  → Feedback DB
+### Runtime system architecture
+
+```mermaid
+flowchart TD
+    U[Maintainer] --> FE[React maintainer UI]
+
+    FE -->|POST /api/v1/infer| API[FastAPI inference service]
+
+    API --> FT[Build deterministic feature text]
+    FT --> CLF[Classifier artifact<br/>TF-IDF + multilabel logistic regression]
+    CLF --> PROBS[Per-label probability scores]
+
+    PROBS --> THRESH[Apply label threshold]
+    PROBS --> ABSTAIN[Apply abstention policy]
+
+    FT --> RET[Retrieval artifact<br/>train-only TF-IDF index]
+    RET --> SIM[Top-k similar historical issues]
+
+    THRESH --> RESP[Inference response]
+    ABSTAIN --> RESP
+    SIM --> RESP
+
+    RESP --> FE
+
+    FE -->|POST /api/v1/feedback| FBAPI[Feedback endpoint]
+    FBAPI --> DB[(Feedback DB<br/>PostgreSQL in Compose<br/>SQLite locally)]
 ```
 
-### ML artifact pipeline
+### Offline ML artifact pipeline
 
-```text
-GitHub issue data
-  → label policy + cleaned dataset
-  → model-ready temporal split
-  → classifier artifact
-       - TF-IDF vectorizer
-       - learned logistic-regression coefficients/intercepts
-       - label order and model metadata
-  → threshold policy
-  → abstention policy
-  → retrieval artifact
-       - train-only TF-IDF index
-       - cosine similarity top-k retrieval
+```mermaid
+flowchart TD
+    GH[GitHub issue data] --> CLEAN[Cleaned issue dataset]
+    CLEAN --> POLICY[Repository-specific label policy]
+    POLICY --> SPLIT[Model-ready temporal split<br/>train / validation / test]
+
+    SPLIT --> TRAIN[Train baseline classifier]
+    TRAIN --> CLFART[Classifier artifact<br/>TF-IDF vectorizer<br/>logistic-regression coefficients/intercepts<br/>label order + metadata]
+
+    SPLIT --> THRESH[Threshold policy]
+    THRESH --> ABSTAIN[Abstention policy]
+
+    SPLIT --> RETBUILD[Build retrieval baseline]
+    RETBUILD --> RETART[Retrieval artifact<br/>train-only TF-IDF index<br/>cosine top-k retrieval]
+
+    CLFART --> CONFIG[Inference config]
+    THRESH --> CONFIG
+    ABSTAIN --> CONFIG
+    RETART --> CONFIG
+
+    CONFIG --> RUNTIME[Runtime inference bundle]
 ```
 
-- **Artifacts** — generated under `data/` (git-ignored); bound by `configs/inference/...`
-- **Inference API** — scores issues via classifier, threshold/abstention, and retrieval
-- **Frontend UI** — maintainer review workbench
-- **Feedback DB** — persists review events; not used for retraining yet
+### Runtime responsibilities
+
+- **React UI** — provides the maintainer workbench, displays predictions, abstention, similar issues, and feedback controls.
+- **FastAPI inference service** — loads the configured artifacts and serves `/infer`, `/feedback`, and `/health`.
+- **Classifier artifact** — contains the TF-IDF vectorizer, learned logistic-regression parameters, label order, and model metadata.
+- **Threshold policy** — decides which label probabilities become predicted labels.
+- **Abstention policy** — decides whether the model should recommend human review.
+- **Retrieval artifact** — retrieves similar historical issues from a train-only TF-IDF index.
+- **Feedback DB** — stores accept, reject, and correction events for future analysis or retraining.
 
 ## How the ML engine works
 
